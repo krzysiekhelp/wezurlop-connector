@@ -61,8 +61,11 @@
 
     <!--
       Usluga: konto LocalSystem (logowanie Windows do SQL; DPAPI maszyny), start automatyczny opozniony,
-      restart po awarii po 60 s. Instalator jej NIE uruchamia — bez konfiguracji nie ma czego robic;
-      uruchamia ja okno po zapisaniu konfiguracji.
+      restart po awarii po 60 s.
+
+      PIERWSZA INSTALACJA jej nie uruchamia — nie ma jeszcze konfiguracji, wiec nie ma czego robic;
+      uruchamia ja okno po jej zapisaniu.
+      AKTUALIZACJA uruchamia ja sama — patrz akcja UruchomUslugePoAktualizacji nizej.
     -->
     <Component Id="Usluga" Directory="INSTALLFOLDER">
       <File Id="UslugaExe" Source="$(Aplikacja)\WuConnector.Service.exe" KeyPath="yes" />
@@ -76,6 +79,38 @@
       </ServiceInstall>
       <ServiceControl Id="UslugaSteruj" Name="WU_Connector" Stop="both" Remove="uninstall" Wait="yes" />
     </Component>
+
+    <!--
+      AKTUALIZACJA SAMA WZNAWIA USLUGE (decyzja uzytkownika 17.10.2026).
+      Problem, ktory to naprawia: MajorUpgrade odinstalowuje stary produkt (ServiceControl Stop) i instaluje
+      nowy, ale nic uslugi nie startuje — Start="auto" w ServiceInstall ustawia tylko TYP startu. Po kazdej
+      aktualizacji synchronizacja stawala do najblizszego restartu serwera.
+
+      DLACZEGO AKCJA WLASNA, A NIE ServiceControl Start="install":
+      1. `ServiceControl` nalezy do komponentu i nie da sie go warunkowac osobno. Warunek na komponencie
+         `Usluga` obialby takze `ServiceInstall`, czyli przy pierwszej instalacji usluga nie zostalaby
+         wcale zarejestrowana. Osobny komponent tylko na start to warunkowy komponent — lamie reguly
+         komponentow MSI przy naprawie i kolejnych aktualizacjach.
+      2. `ServiceControl` ze `Wait="yes"` przy nieudanym starcie WYWRACA instalacje i cofa aktualizacje.
+         A usluga bez czytelnej konfiguracji konczy sie kodem 2 (Service\Program.cs) — czyli dokladnie
+         ten przypadek da sie wywolac. Tutaj `Return="ignore"`: nieudany start nie psuje aktualizacji,
+         zostawia tylko usluge zatrzymana, jak przed zmiana.
+
+      DLACZEGO WARUNEK `WIX_UPGRADE_DETECTED`, A NIE `Installed`:
+      MajorUpgrade instaluje produkt z NOWYM ProductCode, wiec w trakcie aktualizacji `Installed` jest
+      FALSE — ten warunek nie zadzialalby nigdy. `WIX_UPGRADE_DETECTED` ustawia FindRelatedProducts
+      (generowane przez MajorUpgrade) i jest niepuste dokladnie wtedy, gdy na maszynie znaleziono
+      starsza wersje tego produktu. Warunek akcji sprawdzany jest w fazie natychmiastowej, gdzie
+      wlasciwosc jest dostepna — mimo ze sama akcja jest odroczona.
+    -->
+    <CustomAction Id="UruchomUslugePoAktualizacji"
+                  ExeCommand="&quot;[System64Folder]sc.exe&quot; start WU_Connector"
+                  Directory="INSTALLFOLDER"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="UruchomUslugePoAktualizacji" After="InstallServices" Condition="WIX_UPGRADE_DETECTED" />
+    </InstallExecuteSequence>
 
     <!--
       Konfiguracja zawiera zaszyfrowane hasla (DPAPI maszyny — odszyfruje je kazdy proces na tej maszynie),

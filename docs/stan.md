@@ -42,7 +42,7 @@ Pierwsza prawdziwa instalacja z MSI jest wykonana — ręczna rejestracja usług
 
 - Usługa **`WU_Connector`**, stan `RUNNING`, obraz `C:\Program Files\WU_Connector\WuConnector.Service.exe`, auto-start, LocalSystem. **(sprawdzone)**
 - Autostart okna: `HKLM\Software\Microsoft\Windows\CurrentVersion\Run\WU_Connector` = `"C:\Program Files\WU_Connector\WuConnector.Okno.exe" --zasobnik`. **(sprawdzone)**
-- **Zainstalowana paczka: `0.1.5`** (17.10.2026 18:21, aktualizacja MSI z 0.1.4). Usługa chodzi, `Core.dll` SHA-256 `C6EF9B1FF2288AC7…`. **(sprawdzone)** Ścieżka aktualizacji przetestowana na żywo trzy razy — patrz 3.8.
+- **Zainstalowana paczka: `0.1.6`** (17.10.2026 18:30, aktualizacja MSI z 0.1.5 — **usługa wstała sama**, patrz 3.8). Usługa chodzi, `Core.dll` SHA-256 `96B0A1AFBB820720…`. **(sprawdzone)**
 - Katalog `worker\` na miejscu (proces roboczy net48 x86 obok okna i obok usługi).
 - Po starcie usługa przeszła cykl obu firm (850 ms i 233 ms), `tenant.wezurlop.pl` odpowiada.
 - Użytkownik bez uprawnień **czyta** konfigurację i dziennik; zapis podnosi uprawnienia.
@@ -133,14 +133,53 @@ go nie ubije („Odmowa dostępu”) — trzeba je zamknąć ręcznie. **(sprawd
 Uwaga: błąd kopiowania wypada **przed** kompilacją, więc **maskuje błędy kompilacji** — po takim
 niepowodzeniu nie wolno zakładać, że kod się kompiluje.
 
-### 3.8 Instalator NIE uruchamia usługi — po aktualizacji connector stoi (wymaga decyzji)
+### 3.8 Aktualizacja sama wznawia usługę; pierwsza instalacja nie — ZAŁATWIONE (17.10.2026)
 
-**Wyszło przy pierwszym teście ścieżki aktualizacji, 17.10.2026. (sprawdzone na żywo, dwa razy.)**
+**Problem, który to naprawia.** `ServiceControl` ma `Stop="both"` i `Remove="uninstall"`, ale **nie ma
+`Start`**, a `Start="auto"` w `ServiceInstall` ustawia tylko **typ** startu (automatyczny przy rozruchu).
+Po każdej aktualizacji MSI usługa zostawała zatrzymana, dopóki ktoś jej nie uruchomił albo maszyna się
+nie zrestartowała. Wyszło przy pierwszym teście ścieżki aktualizacji.
 
-W `Package.wxs` `ServiceControl` ma `Stop="both"` i `Remove="uninstall"`, ale **nie ma `Start`**.
-`Start="auto"` w `ServiceInstall` ustawia tylko **typ** startu (automatyczny przy rozruchu), a nie
-startuje usługi w trakcie instalacji. Skutek: **po każdej aktualizacji MSI usługa zostaje zatrzymana**,
-dopóki ktoś jej nie uruchomi albo maszyna się nie zrestartuje.
+**Jak jest teraz.** Osobna akcja `UruchomUslugePoAktualizacji` w `Package.wxs`, odroczona, bez
+impersonacji, `Return="ignore"`, sekwencjonowana zaraz po `InstallServices`, z warunkiem
+**`WIX_UPGRADE_DETECTED`**.
+
+**Dlaczego akcja własna, a nie `ServiceControl Start="install"`:**
+1. `ServiceControl` należy do komponentu i nie da się go warunkować osobno. Warunek na komponencie
+   `Usluga` objąłby też `ServiceInstall`, czyli przy pierwszej instalacji usługa nie zostałaby wcale
+   zarejestrowana. Osobny komponent tylko na start to komponent warunkowy — łamie reguły komponentów
+   MSI przy naprawie i kolejnych aktualizacjach.
+2. `ServiceControl` ze `Wait="yes"` przy nieudanym starcie **wywraca instalację i cofa aktualizację**.
+   A usługa bez czytelnej konfiguracji kończy się kodem 2 (`Service\Program.cs`) — ten przypadek da się
+   wywołać, więc nie jest teoretyczny.
+
+**Dlaczego `WIX_UPGRADE_DETECTED`, a nie `Installed`:** `MajorUpgrade` instaluje produkt z **nowym**
+`ProductCode`, więc w trakcie aktualizacji `Installed` jest fałszywe — ten warunek nie zadziałałby nigdy.
+`WIX_UPGRADE_DETECTED` ustawia `FindRelatedProducts` (sekwencja 25, długo przed naszą akcją na 5801)
+i jest niepuste dokładnie wtedy, gdy znaleziono starszą wersję tego produktu.
+
+**Sprawdzone na żywo, oba scenariusze w jednym przebiegu** (`build\test-aktualizacji.ps1 -Stara 0.1.5 -Nowa 0.1.6`):
+
+| | |
+|---|---|
+| usługa po **pierwszej** instalacji | `Stopped` — bez zmian, startuje ją okno po zapisaniu konfiguracji |
+| usługa po **aktualizacji** | **`Running`**, bez żadnej ręcznej ingerencji; cykl obu firm 18:30:02 |
+
+**Nieudany start nie psuje aktualizacji — też sprawdzone na żywo.** Odłożyłem `konfiguracja.json` na bok
+i zrobiłem aktualizację: `msiexec` zwrócił **0**, wersja podmieniona, usługa `Stopped`, bez wycofania.
+W dzienniku MSI wprost:
+
+```
+CustomAction UruchomUslugePoAktualizacji returned actual error code 1053
+but will be translated to success due to continue marking
+```
+
+(1053 = usługa nie odpowiedziała w czasie, bo proces zakończył się kodem 2 przy braku konfiguracji.)
+
+**Weryfikacja tabel MSI:** `CustomAction` typ **3170** = 34 (exe + katalog) + 64 (`Return=ignore`)
++ 1024 (odroczona) + 2048 (bez impersonacji); `InstallExecuteSequence` 5801 z warunkiem
+`WIX_UPGRADE_DETECTED`; `ServiceControl.Event` = 162 = 2 + 32 + 128, czyli **bez bitu startu (1)** —
+sam instalator nadal nigdy nie startuje usługi, jedyną drogą jest warunkowa akcja.
 
 Na pierwszej instalacji to było zamierzone i słuszne — nie ma jeszcze konfiguracji, więc usługę startuje
 okno po jej zapisaniu. **Przy aktualizacji jest inaczej:** konfiguracja już jest, a mimo to synchronizacja
@@ -239,7 +278,7 @@ wymaga: okno przekazuje podniesionemu procesowi sekcję konfiguracji (`ZmianaSek
 Kolejność wedle wagi, nie chronologii. **Żadne z tych zadań nie jest rozpoczęte.**
 
 1. ~~Unikalny numer każdej paczki~~ — **zrobione 17.10.2026**, patrz 3.1: licznik w `build\wersja.txt` podbijany przez `publikuj.ps1`, jedno źródło dla trzech projektów, MSI i protokołu.
-2. ~~Test ścieżki aktualizacji~~ — **zrobione 17.10.2026**, dwa razy na żywo (0.1.2 → 0.1.3 → 0.1.4). Patrz 3.8: binaria się podmieniają, żadnego „Won't Overwrite", konfiguracja i sekrety w `ProgramData` nietknięte, jeden wpis w „Programach i funkcjach". **Ale wyszło przy tym, że instalator nie uruchamia usługi — patrz 3.8, wymaga decyzji.**
+2. ~~Test ścieżki aktualizacji~~ — **zrobione 17.10.2026**, pięć razy na żywo (0.1.2 → 0.1.3 → 0.1.4 → 0.1.5 → 0.1.6). Binaria się podmieniają, żadnego „Won't Overwrite", konfiguracja i sekrety w `ProgramData` nietknięte, jeden wpis w „Programach i funkcjach", a od 0.1.6 **usługa wstaje po aktualizacji sama** — patrz 3.8.
 3. **Wymiana deweloperskiego klucza manifestu** (22.23) — blokujące dla wdrożenia.
 4. **Certyfikat code signing** dla EXE i MSI — patrz 3.3; domyka też punkt 3.
 5. **Grupa minimalna uprawnień konta R2** (22.16): konto techniczne connectora siedzi wciąż w grupie „Kadry — wprowadzanie”. Po utworzeniu grupy: przepięcie konta i testy zapisu / edycji / usunięcia cudzego wpisu (`F6A`/`F8A`) / braku uprawnień. R2 pozwala grupę wyeksportować i zaimportować → robimy raz i powielamy u klientów.

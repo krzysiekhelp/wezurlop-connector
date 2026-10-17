@@ -72,10 +72,14 @@ if (-not $BezOdinstalowania) {
 }
 
 # --- krok 1: wersja N
+# Po odinstalowaniu wszystkiego jest to PIERWSZA instalacja, wiec usluga ma zostac zatrzymana
+# (warunek WIX_UPGRADE_DETECTED jest falszywy). Zapisujemy to, bo zaraz porownamy z aktualizacja.
 Instaluj $msiStara "N-$Stara"
 $hashN = Hash (Join-Path $cel 'WuConnector.Core.dll')
 $wersjaN = (Get-Item (Join-Path $cel 'WuConnector.Service.exe')).VersionInfo.FileVersion
-Write-Host "Core.dll: $hashN    wersja uslugi: $wersjaN"
+$su = Get-Service WU_Connector -ErrorAction SilentlyContinue
+$uslugaPoPierwszej = if ($su) { $su.Status } else { 'BRAK USLUGI' }
+Write-Host "Core.dll: $hashN    wersja uslugi: $wersjaN    usluga: $uslugaPoPierwszej"
 
 # Znacznik w ProgramData: sprawdzimy po aktualizacji, czy przezyl.
 $znacznik = Join-Path $dane 'test-aktualizacji.txt'
@@ -103,7 +107,8 @@ $u = Get-Service WU_Connector -ErrorAction SilentlyContinue
                                    ($konfiguracjaPrzed -eq (Hash (Join-Path $dane 'konfiguracja.json')))
     'wpisow w Programach'        = $wpisy.Count
     'wersja we wpisie'           = ($wpisy | ForEach-Object DisplayVersion) -join ', '
-    'usluga'                     = if ($u) { "$($u.Status), start: $($u.StartType)" } else { 'BRAK USLUGI' }
+    'usluga po PIERWSZEJ instalacji' = $uslugaPoPierwszej
+    'usluga po AKTUALIZACJI'     = if ($u) { "$($u.Status), start: $($u.StartType)" } else { 'BRAK USLUGI' }
     'worker\ plikow'             = (Get-ChildItem (Join-Path $cel 'worker') -File -ErrorAction SilentlyContinue | Measure-Object).Count
 } | Format-List
 
@@ -117,12 +122,18 @@ Oczekiwane:
   znacznik w ProgramData zyje = True       <- aktualizacja nie czysci danych
   konfiguracja nietknieta    = True        <- sekrety i ustawienia klienta zostaja
   wpisow w Programach        = 1           <- MajorUpgrade zastapil, nie dolozyl
-  usluga                     = Stopped     <- TAK MA BYC, patrz nizej
+  usluga po PIERWSZEJ instalacji = Stopped <- pierwsza instalacja nie startuje uslugi: nie ma
+                                              jeszcze konfiguracji, startuje ja okno po zapisaniu
+  usluga po AKTUALIZACJI     = Running     <- aktualizacja wznawia usluge SAMA
 
-UWAGA: instalator NIE uruchamia uslugi. ServiceControl ma Stop="both" i Remove="uninstall",
-ale nie ma Start, a Start="auto" w ServiceInstall ustawia tylko TYP startu (automatyczny przy
-rozruchu), nie startuje jej teraz. Po aktualizacji usluga zostaje zatrzymana do czasu, gdy ktos
-ja uruchomi albo maszyna sie zrestartuje. Po tescie trzeba wiec wykonac:
+Dwa ostatnie wiersze sa sednem tego testu. Instalator startuje usluge WYLACZNIE przy aktualizacji -
+akcja UruchomUslugePoAktualizacji z warunkiem WIX_UPGRADE_DETECTED (Package.wxs). Krok N jest tu
+pierwsza instalacja (wszystko wczesniej odinstalowane), krok N+1 aktualizacja, wiec jeden przebieg
+sprawdza oba przypadki.
+
+Gdyby "usluga po AKTUALIZACJI" byla Stopped: albo warunek sie nie spelnil, albo usluga nie wstala
+(np. nieczytelna konfiguracja - wtedy proces konczy sie kodem 2). Start jest opcjonalny
+(Return="ignore"), wiec nieudany start NIE psuje aktualizacji; usluge mozna wtedy uruchomic recznie:
 
     Start-Service WU_Connector
 
