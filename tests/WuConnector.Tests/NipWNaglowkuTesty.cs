@@ -130,7 +130,8 @@ public class NipWNaglowkuTesty
     [Fact]
     public void NIP_w_dzienniku_jest_skrocony_do_trzech_ostatnich_cyfr()
     {
-        // Trzy cyfry wystarczaja, zeby odroznic firmy w dzienniku, a za malo, zeby odtworzyc numer.
+        // Trzy cyfry wystarczaja, zeby odroznic firmy w dzienniku. To nie anonimizacja — patrz Nip.DoLogu;
+        // test pilnuje tylko tego, ze pelny numer nie przechodzi do dziennika.
         Assert.Equal("*******009", Nip.DoLogu(NipTestowy));
         Assert.Equal("*******009", Nip.DoLogu("123-456-70-09"));   // normalizacja przed maskowaniem
         Assert.Equal("*******009", Nip.DoLogu("PL1234567009"));

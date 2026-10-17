@@ -17,8 +17,15 @@ public static class Nip
 
     /// <summary>
     /// NIP do dziennika — nigdy w pelnej postaci (zasada z 17.10.2026: dane klienta nie zostaja w logach).
-    /// Zostawia trzy ostatnie cyfry: tyle wystarcza, zeby odroznic firmy w dzienniku, a za malo,
-    /// zeby numer odtworzyc. Dla pustego NIP-u zwraca „?”, zeby komunikat dalej sie skladal.
+    /// Zostawia trzy ostatnie cyfry: tyle wystarcza, zeby odroznic firmy w dzienniku.
+    ///
+    /// ⚠ To NIE jest anonimizacja i tak tego nie nazywamy. Ukrytych jest siedem cyfr, a suma kontrolna
+    /// wiaze je z ostatnia, wiec kandydatow zostaje rzedu 10^6 — duzo, ale skonczenie, a NIP-y nie sa
+    /// rozlozone rownomiernie i stoja w publicznych rejestrach. Cel jest wezszy i taki wystarcza:
+    /// dziennik nie ma byc lista NIP-ow gotowa do skopiowania. Numeru, ktory ma naprawde nie wyjsc,
+    /// do dziennika nie wpisujemy wcale.
+    ///
+    /// Dla pustego NIP-u zwraca „?”, zeby komunikat dalej sie skladal.
     /// </summary>
     public static string DoLogu(string? nip)
     {
