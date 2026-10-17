@@ -2,7 +2,9 @@
 
   <!-- Budowane przez build\publikuj.ps1 — najpierw publikacja aplikacji do artefakty\app. -->
   <PropertyGroup>
-    <Wersja Condition="'$(Wersja)' == ''">0.1.0</Wersja>
+    <!-- Domyslnie ta sama wersja co aplikacja (build\wersja.txt przez Directory.Build.props),
+         zeby `dotnet build installer\…` bez parametru nie zbudowal MSI z innym numerem niz binaria. -->
+    <Wersja Condition="'$(Wersja)' == ''">$(WersjaProduktu)</Wersja>
     <OutputName>WU_Connector-$(Wersja)</OutputName>
     <InstallerPlatform>x64</InstallerPlatform>
     <DefineConstants>Wersja=$(Wersja);Aplikacja=$(MSBuildThisFileDirectory)..\artefakty\app</DefineConstants>

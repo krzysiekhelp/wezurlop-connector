@@ -41,3 +41,17 @@ dotnet test tests\WuConnector.Tests -c Release
 ```
 
 Test na żywo (kopia bazy): `tools\uruchom-worker.ps1` — hasło konta R2 w `$env:WU_R2_HASLO`.
+
+## Wersja i paczka
+
+Jedno źródło wersji całego produktu: **`build\wersja.txt`**. Czyta je `Directory.Build.props`, więc trzy projekty i instalator mają zawsze ten sam numer — w `.csproj` nie ma `<Version>`. Ten numer idzie też do protokołu jako `wersjaConnectora`.
+
+```
+.\build\publikuj.ps1                 # podbija 0.1.N -> 0.1.N+1 i buduje artefakty\WU_Connector-0.1.N+1.msi
+.\build\publikuj.ps1 -BezPodbicia    # przebudowa biezacego numeru (nie wydawac tak paczki)
+.\build\publikuj.ps1 -Wersja 0.2.0   # wymuszenie numeru
+```
+
+**Po zbudowaniu paczki zacommituj `build\wersja.txt`.** Każda wydana paczka musi mieć inny, rosnący numer: MSI nie nadpisuje plików o tej samej wersji, więc aktualizacja paczką o numerze równym zainstalowanemu **cicho nie zmienia binariów**. Szczegóły i uzasadnienie wyboru licznika: `docs/stan.md` 3.1.
+
+Test ścieżki aktualizacji (uruchamia administrator): `build\test-aktualizacji.ps1 -Stara 0.1.2 -Nowa 0.1.3`.

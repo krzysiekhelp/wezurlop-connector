@@ -1,0 +1,17 @@
+<Project>
+
+  <!--
+    Jedna wersja dla calego produktu: trzy projekty, MSI i `wersjaConnectora` wysylana w protokole
+    (usluga czyta ja z wlasnego zestawu, patrz SluzbaConnectora.Wersja). Zrodlem jest build\wersja.txt,
+    podbijany przez build\publikuj.ps1 — zadnego numeru nie wpisujemy w .csproj.
+
+    Dlaczego to wazne: MSI NIE nadpisuje plikow o tej samej wersji („Won't Overwrite; Existing file is
+    of an equal version"). Dwie paczki z tym samym numerem i roznym kodem oznaczaja aktualizacje, ktora
+    CICHO nic nie zmienia — na to nadzialismy sie przy pierwszym wdrozeniu (22.x / docs\stan.md 3.1).
+  -->
+  <PropertyGroup>
+    <WersjaProduktu>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)build\wersja.txt').Trim())</WersjaProduktu>
+    <Version>$(WersjaProduktu)</Version>
+  </PropertyGroup>
+
+</Project>

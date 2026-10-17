@@ -10,7 +10,6 @@
     <AssemblyName>WuConnector.Okno</AssemblyName>
     <RootNamespace>WuConnector.Okno</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>0.1.0</Version>
     <!-- Ikona aplikacji = favicon wezurlop.pl (ta sama maskotka); skrot z instalatora dziedziczy ja z EXE. -->
     <ApplicationIcon>Grafika\ikona.ico</ApplicationIcon>
     <!-- Kontrolki rysowane recznie, bez projektanta WinForms — serializacja wlasciwosci do Designer.cs niepotrzebna. -->

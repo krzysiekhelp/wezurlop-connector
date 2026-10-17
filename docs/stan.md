@@ -42,7 +42,7 @@ Pierwsza prawdziwa instalacja z MSI jest wykonana — ręczna rejestracja usług
 
 - Usługa **`WU_Connector`**, stan `RUNNING`, obraz `C:\Program Files\WU_Connector\WuConnector.Service.exe`, auto-start, LocalSystem. **(sprawdzone)**
 - Autostart okna: `HKLM\Software\Microsoft\Windows\CurrentVersion\Run\WU_Connector` = `"C:\Program Files\WU_Connector\WuConnector.Okno.exe" --zasobnik`. **(sprawdzone)**
-- Paczka: `artefakty\WU_Connector-0.1.0.msi`, 44 253 178 B, 16.10.2026 22:38. **(sprawdzone)**
+- Paczka zainstalowana 16.10.2026 22:38: `WU_Connector-0.1.0.msi`, 44 253 178 B. **(sprawdzone)** Od 17.10 numer paczki podbija licznik (3.1), więc kolejne paczki to `0.1.N`.
 - Katalog `worker\` na miejscu (proces roboczy net48 x86 obok okna i obok usługi).
 - Po starcie usługa przeszła cykl obu firm (850 ms i 233 ms), `tenant.wezurlop.pl` odpowiada.
 - Użytkownik bez uprawnień **czyta** konfigurację i dziennik; zapis podnosi uprawnienia.
@@ -50,17 +50,40 @@ Pierwsza prawdziwa instalacja z MSI jest wykonana — ręczna rejestracja usług
 
 ## 3. PUŁAPKI — przeczytaj przed wdrożeniem
 
-### 3.1 MSI nie nadpisuje plików o tej samej wersji (blokujące dla aktualizacji)
+### 3.1 MSI nie nadpisuje plików o tej samej wersji — ZAŁATWIONE licznikiem (17.10.2026)
 
-W dzienniku instalacji: „Won't Overwrite; Existing file is of an equal version”.
-Wszystkie trzy projekty mają na sztywno `<Version>0.1.0</Version>` (`Okno`, `Service`, `Worker`). **(sprawdzone)**
+**Pułapka, o której trzeba wiedzieć, choć już nie gryzie.** MSI nie nadpisuje plików o tej samej wersji
+— w dzienniku instalacji zostawia „Won't Overwrite; Existing file is of an equal version". Dopóki
+wszystkie paczki nosiły numer 0.1.0, wgranie nowej **cicho zostawiało stare binaria**; przy pierwszym
+wdrożeniu trzeba było odinstalować, wyczyścić `Program Files` i zainstalować od zera.
 
-Skutek: wgranie nowej paczki z tym samym numerem **cicho zostawia stare binaria**.
-Przy pierwszym teście trzeba było odinstalować, wyczyścić `Program Files` i zainstalować od zera.
-`MajorUpgrade` w `Package.wxs` jest skonfigurowany, więc **wyższa** wersja podmieni starszą — problem dotyczy wyłącznie równych numerów.
+**Jak jest teraz.** Jedno źródło wersji dla całego produktu: **`build\wersja.txt`**. Czyta je
+`Directory.Build.props`, więc trzy projekty (`Okno`, `Service`, `Worker`) i instalator biorą ten sam
+numer — **w żadnym `.csproj` nie ma już `<Version>`**. Ten numer jedzie też do protokołu jako
+`wersjaConnectora` (usługa czyta go z własnego zestawu: `SluzbaConnectora.Wersja`).
 
-**Czeka na decyzję:** licznik kompilacji w `build\publikuj.ps1`, żeby każda paczka miała unikalny numer.
-Bez tego **pierwsza aktualizacja u klienta nic nie zmieni.**
+`build\publikuj.ps1` **podbija trzecie pole przy każdym budowaniu** (0.1.N → 0.1.N+1) i zapisuje je
+z powrotem do `wersja.txt`. Przełączniki: `-BezPodbicia` (przebudowa bieżącego numeru — takiej paczki
+nie wydawać), `-Wersja x.y.z` (wymuszenie, np. przy zmianie minor).
+
+**Po zbudowaniu paczki trzeba zacommitować `build\wersja.txt`** — inaczej następny build na innej kopii
+repozytorium wyda ten sam numer. Skrypt o tym przypomina na końcu.
+
+**Dlaczego licznik w pliku repozytorium, a nie z liczby commitów:** plik jedzie z repozytorium, więc po
+klonie licznik nie wraca do zera i nie wydamy drugi raz numeru, który stoi już u klienta. Liczba commitów
+ma tę własność, ale łamie związek numer ↔ zawartość (build z brudnego drzewa albo z gałęzi dostaje numer
+opisujący inną zawartość — czyli dokładnie ten błąd, który naprawiamy) i nie jest monotoniczna między
+gałęziami ani po scaleniach, a `MajorUpgrade` wymaga rosnącego numeru.
+
+**Sprawdzone na dwóch paczkach (0.1.2 i 0.1.3):** `UpgradeCode` ten sam
+(`{6B0C8A5E-2F4D-4A7B-9E31-7C1D5A0F4E21}`), **`ProductCode` różny w każdej wersji** (WiX generuje go
+sam), `ProductVersion` rośnie, a wszystkie trzy binaria raportują numer paczki. **(sprawdzone)**
+
+**Nadal nieprzetestowana jest sama ścieżka aktualizacji N → N+1 na maszynie** — patrz punkt 2 listy
+„co czeka". Skrypt gotowy: `build\test-aktualizacji.ps1 -Stara 0.1.2 -Nowa 0.1.3`, **uruchamia go
+administrator** (zatrzymuje usługę i instaluje produkt). Sprawdza podmianę binariów po SHA-256,
+przeżycie konfiguracji i sekretów w `ProgramData`, liczbę wpisów w „Programach i funkcjach", powrót
+usługi, a w dzienniku MSI wyszukuje „Won't Overwrite".
 
 ### 3.2 Klucz manifestu bibliotek R2 jest DEWELOPERSKI (22.23) — blokujące
 
@@ -68,7 +91,7 @@ Do wymiany przed wdrożeniem u klienta.
 
 ### 3.3 Nic nie jest podpisane Authenticode
 
-`WuConnector.Okno.exe` i `WU_Connector-0.1.0.msi` → `Status: NotSigned`. **(sprawdzone)**
+`WuConnector.Okno.exe` i paczka MSI → `Status: NotSigned`. **(sprawdzone)**
 
 Skutek praktyczny: Windows pokazuje żółte okno UAC „Nieznany wydawca” z ikoną generyczną.
 **To nie jest błąd ikony** — `ApplicationIcon` jest ustawiony, a `Grafika\ikona.ico` ma pełny zestaw
@@ -170,7 +193,7 @@ wymaga: okno przekazuje podniesionemu procesowi sekcję konfiguracji (`ZmianaSek
 
 Kolejność wedle wagi, nie chronologii. **Żadne z tych zadań nie jest rozpoczęte.**
 
-1. **Unikalny numer każdej paczki** w `build\publikuj.ps1` (licznik kompilacji) — patrz 3.1. Czeka na decyzję użytkownika.
+1. ~~Unikalny numer każdej paczki~~ — **zrobione 17.10.2026**, patrz 3.1: licznik w `build\wersja.txt` podbijany przez `publikuj.ps1`, jedno źródło dla trzech projektów, MSI i protokołu.
 2. **Test ścieżki aktualizacji:** instalacja N, potem N+1 — czy pliki się podmieniają, czy konfiguracja i sekrety w `ProgramData` zostają, czy nie robią się dwa wpisy w „Programach i funkcjach”. Dotąd przetestowana jest **wyłącznie pierwsza instalacja.**
 3. **Wymiana deweloperskiego klucza manifestu** (22.23) — blokujące dla wdrożenia.
 4. **Certyfikat code signing** dla EXE i MSI — patrz 3.3; domyka też punkt 3.
