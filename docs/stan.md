@@ -13,7 +13,26 @@ Przy faktach sprawdzonych bezpośrednio stoi **(sprawdzone)**.
 ## 1. Punkt wyjścia
 
 - Repozytorium `C:\WU_Connector`, gałąź **`main`**. **Historia zaczyna się od jednego czystego commita z 17.10.2026** — decyzja użytkownika po audycie: poprzednie 71 commitów zawierało prawdziwe dane osobowe i dane klienta, więc nie nadawały się do wypchnięcia.
-- **Repozytorium nie ma jeszcze zdalnego.** Docelowo prywatne repozytorium na koncie GitHub użytkownika.
+- **Zdalny:** `origin` → **prywatne** repozytorium `krzysiekhelp/wezurlop-connector` na GitHubie, bez współpracowników. Pierwszy push 17.10.2026. Adres **używa aliasu SSH, nie `github.com`**:
+
+      git@github-wezurlop-connector:krzysiekhelp/wezurlop-connector.git
+
+  Adres zapisany wprost na `github.com` **nie zadziała** — ominąłby alias i `IdentitiesOnly`, więc SSH nie podałby klucza connectora.
+- **Uwierzytelnianie: deploy key, nie konto.** Klucz ma dostęp **wyłącznie do tego jednego repozytorium**; poświadczenie konta `krzysiekhelp` zapisane w Git Credential Managerze dałoby dostęp do wszystkich repozytoriów konta i świadomie go tu nie używamy.
+
+  | | |
+  |---|---|
+  | typ | ED25519, 256 bitów |
+  | odcisk | `SHA256:nm4+U709QAGvdNbJNQFGXKTICPQmTLNhvhF1JAxUScY` |
+  | klucz prywatny | `C:\Users\admin\.ssh\id_ed25519_wezurlop_connector`, ACL zawężone do jednego wpisu `admin:(R)`, dziedziczenie zdjęte |
+  | alias | `C:\Users\admin\.ssh\config`, sekcja `Host github-wezurlop-connector` |
+  | hasło klucza | **brak** — push idzie z sesji bez interakcji |
+
+  Brak hasła to świadomy kompromis: kto odczyta ten plik, może pisać do repozytorium. ACL chroni przed innymi kontami, nie przed kimś, kto ma już konto administratora tej maszyny. Zysk względem tokena konta polega na tym, że szkoda ogranicza się do jednego repozytorium, a klucz unieważnia się natychmiast.
+
+  **Unieważnienie:** GitHub → repozytorium `wezurlop-connector` → Settings → Deploy keys → usuń wpis `wezurlop-deploy-connector`. Push z tej maszyny przestaje działać od razu, reszta konta nietknięta.
+
+  **Wymiana klucza** (rotacja, przenosiny na inną maszynę): `ssh-keygen -t ed25519 -C "wezurlop-deploy-connector" -f <nowa ścieżka> -N ""` → zawęź ACL pliku prywatnego → popraw `IdentityFile` w `~/.ssh/config` → dodaj nowy klucz publiczny w Deploy keys **z zaznaczonym „Allow write access"** → sprawdź `ssh -T git@github-wezurlop-connector` (odpowiedź musi witać nazwą repozytorium, nie nazwą konta) → usuń stary wpis w GitHubie i stary plik klucza. Klucza prywatnego **nigdy** nie commitujemy ani nie kopiujemy poza maszynę; `.gitignore` wyklucza `*.pem`, `*.key`, `klucz-prywatny*`.
 - **Stara historia (71 commitów, gałęzie `main` i `konta-mssql`) jest zarchiwizowana lokalnie** w `C:\WU_Connector_archiwum\` — lustro `connector-historia-2026-10-17.git` i paczka `connector-historia-2026-10-17.bundle`. **Nie wolno jej kopiować poza tę maszynę ani wypychać** — zawiera dane, które właśnie z repozytorium usunięto. Narzędzie `tools\Podglad` leży tam w `poza-repo\`.
 - Dokumentacja projektu leży osobno: `C:\Symfonia\_projekt-urlopy`. Numery w nawiasach (22.23, 22.24…) to rozdziały `USTALENIA-2026-09-13-srodowisko-i-API.md`.
 
