@@ -13,8 +13,6 @@ public sealed class EkranPolaczenie : Ekran
     readonly TextBox _adres, _klucz;
     readonly CheckBox _pokaz = new() { Text = "pokaż", AutoSize = true, BackColor = Color.White, ForeColor = Styl.Szary, Tag = Ekran.BezZapisu };
     readonly Przycisk _testuj = new() { Text = "Testuj połączenie", Width = 190 };
-    readonly Komunikat _wynik = new() { Visible = false };
-    readonly Label _szczegol = E.Opis("");
     readonly NumericUpDown _odstep = Liczba(), _poza = Liczba();
     readonly DateTimePicker _od = Godzina(), _do = Godzina();
     readonly CheckBox[] _dni = new CheckBox[7];
@@ -67,7 +65,6 @@ public sealed class EkranPolaczenie : Ekran
     public EkranPolaczenie(Kontekst k)
     {
         _k = k;
-        Uklad.Pokaz(_wynik, false);
         _adres = E.Pole(k.Plik?.AdresSerwera ?? "");
         _klucz = E.Pole(Jawny(k.Plik?.KluczApi), true);
         int szer = Uklad.SzerokoscTresci;
@@ -116,8 +113,6 @@ public sealed class EkranPolaczenie : Ekran
                   Uklad.Srednia);
         b1.Przyciski(zapiszPolaczenie.Przycisk);
         b1.Wiersz(zapiszPolaczenie, Uklad.Mala);
-        b1.Wiersz(_wynik, Uklad.Mala);
-        b1.Wiersz(_szczegol, 0);
         var bpol = b1.Domknij();
         Plyta(bpol);
         _pokaz.CheckedChanged += (_, _) => _klucz.UseSystemPasswordChar = !_pokaz.Checked;
@@ -304,66 +299,71 @@ public sealed class EkranPolaczenie : Ekran
     /// Test polaczenia na operacji `stan` (protokol z 20.09.2026): jedno wywolanie, ktore nie otwiera przebiegu
     /// i nie zostawia pustych cykli w statystyce serwera. Bez wykrytej firmy sprawdzamy sam klucz.
     /// </summary>
-    async Task TestujAsync()
+    /// <summary>
+    /// Wynik w oknie modalnym — tak samo jak test SQL i test logowania do R2 na zakladce „R2 Platnik".
+    /// Tresc wyniku jest krotka: „Powodzenie" albo sama rzecz, ktora nie gra. Bez czasow i numerow
+    /// protokolu, zgodnie z zasada przyjeta dla pozostalych testow.
+    /// </summary>
+    Task TestujAsync()
     {
-        if (!Uri.TryCreate(_adres.Text.Trim(), UriKind.Absolute, out var adres)) { Pokaz("Nieprawidłowy adres", Poziom.Uwaga, ""); return; }
+        if (!Uri.TryCreate(_adres.Text.Trim(), UriKind.Absolute, out var adres))
+        {
+            DialogPytania.Informacja(FindForm()!, "Test połączenia",
+                "Adres aplikacji wezurlop jest nieprawidłowy.", "Powinien zaczynać się od https:// i wskazywać domenę tej firmy.");
+            return Task.CompletedTask;
+        }
         string? nip = Nipy().FirstOrDefault();
+        string klucz = _klucz.Text.Trim();
 
-        _testuj.Enabled = false;
-        Pokaz("Łączę…", Poziom.Info, "");
-        try
-        {
-            using var klient = new KlientTenanta(adres, _klucz.Text.Trim(), "okno-konfiguracji", limitCzasu: TimeSpan.FromSeconds(20));
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            var stan = await klient.StanAsync(nip);
-            string ms = $"{sw.ElapsedMilliseconds} ms";
+        DialogPracy.Wykonaj(FindForm(), "Test połączenia z wezurlop",
+            adres.Host + (nip is null ? "" : $" · firma NIP {EkranStatus.FormatNip(nip)}"),
+            "Łączę z wezurlop…", async () =>
+            {
+                using var klient = new KlientTenanta(adres, klucz, "okno-konfiguracji", limitCzasu: TimeSpan.FromSeconds(20));
+                try
+                {
+                    var stan = await klient.StanAsync(nip);
+                    if (nip is null)
+                        return new DialogPracy.Wynik(Poziom.Ok, "Powodzenie",
+                            "Klucz działa. Firmy jeszcze nie wykryto — po skonfigurowaniu instalacji test sprawdzi także, czy jest zatwierdzona.");
 
-            if (nip is null)
-            {
-                Pokaz($"klucz działa · {ms}", Poziom.Ok,
-                      "Nie wykryto jeszcze firmy — po wykryciu instalacji test sprawdzi też, czy firma jest zatwierdzona.");
-                return;
-            }
-
-            string firma = $"Firma NIP {EkranStatus.FormatNip(nip)}";
-            var (tekst, poziom, szczegol) = stan.Firma?.Stan switch
-            {
-                "ok" => ($"połączenie działa · {ms}", Poziom.Ok,
-                         $"{firma} zatwierdzona w wezurlop." + (stan.OstatniPrzebieg is DateTimeOffset t
-                            ? $" Ostatni przebieg: {Styl.DataGodzina(t)}." : " Przebiegów jeszcze nie było.")),
-                "firma_zgloszona" => ($"klucz działa, firma czeka na zatwierdzenie · {ms}", Poziom.Uwaga,
-                         $"{firma} została zgłoszona — administrator wezurlop musi ją zatwierdzić. Synchronizacja ruszy sama po zatwierdzeniu."),
-                "firma_nieznana" => ($"klucz działa, firma nieznana · {ms}", Poziom.Uwaga,
-                         $"{firma} nie jest jeszcze zgłoszona. Connector zgłosi ją przy najbliższym cyklu; zatwierdza administrator wezurlop."),
-                "firma_poza_zakresem" => ($"klucz działa, firma poza zakresem klucza · {ms}", Poziom.Blad,
-                         $"{firma} nie należy do tego klucza — sprawdź, czy klucz jest wydany dla tej firmy."),
-                _ => ($"połączenie działa · {ms}", Poziom.Ok, $"Serwer nie podał stanu firmy (protokół {stan.Protokol})."),
-            };
-            Pokaz(tekst, poziom, szczegol);
-        }
-        catch (BladProtokolu e)
-        {
-            var (t, p) = e.Status switch
-            {
-                0 => ("Brak połączenia z serwerem", Poziom.Blad),
-                // Connector wysyła NIP wyłącznie nagłówkiem X-Nip. Jeśli serwer widzi do tego parametr
-                // ?nip= z inną wartością, dokłada go coś po drodze — to błąd konfiguracji, nie usterka łącza.
-                400 when e.Kod == "NIP_NIESPOJNY" =>
-                    ("Serwer dostał dwa różne NIP-y w jednym żądaniu — sprawdź pośrednika (proxy) na drodze do serwera", Poziom.Blad),
-                401 => ("Klucz nieprawidłowy albo wygasł", Poziom.Blad),
-                403 => ("Firma nie jest zatwierdzona w wezurlop", Poziom.Uwaga),
-                404 => ("Serwer nie zna operacji „stan” — zaktualizuj aplikację wezurlop", Poziom.Uwaga),
-                409 => ("Niezgodna wersja protokołu — zaktualizuj connector", Poziom.Blad),
-                422 => ("NIP firmy jest niepoprawny — popraw go w programie kadrowym", Poziom.Blad),
-                429 or 503 => ("Serwer prosi o chwilę przerwy", Poziom.Uwaga),
-                _ => ($"Serwer odpowiedział błędem {e.Status}", Poziom.Blad),
-            };
-            string szczegoly = e.Kod ?? "";
-            if (e.Powod is string powod) szczegoly += " · " + powod;   // 401 i 409 niosa doprecyzowanie przyczyny
-            if (e.ZdarzenieId is string zd) szczegoly += $" · zdarzenie {zd} (podaj je wsparciu wezurlop)";
-            Pokaz(t, p, szczegoly);
-        }
-        finally { _testuj.Enabled = true; }
+                    return stan.Firma?.Stan switch
+                    {
+                        "ok" => new DialogPracy.Wynik(Poziom.Ok, "Powodzenie", "Firma jest zatwierdzona w wezurlop."),
+                        "firma_zgloszona" => new DialogPracy.Wynik(Poziom.Uwaga, "Firma czeka na zatwierdzenie",
+                            "Klucz działa. Administrator wezurlop musi zatwierdzić firmę — synchronizacja ruszy sama po zatwierdzeniu."),
+                        "firma_nieznana" => new DialogPracy.Wynik(Poziom.Uwaga, "Firma nie jest jeszcze zgłoszona",
+                            "Klucz działa. Connector zgłosi firmę przy najbliższym cyklu; zatwierdza ją administrator wezurlop."),
+                        "firma_poza_zakresem" => new DialogPracy.Wynik(Poziom.Blad, "Firma poza zakresem klucza",
+                            "Sprawdź, czy klucz jest wydany dla tej firmy."),
+                        _ => new DialogPracy.Wynik(Poziom.Ok, "Powodzenie", "Serwer nie podał stanu firmy."),
+                    };
+                }
+                catch (BladProtokolu e)
+                {
+                    string tekst = e.Status switch
+                    {
+                        0 => "Brak połączenia z serwerem",
+                        // Connector wysyła NIP wyłącznie nagłówkiem X-Nip. Jeśli serwer widzi do tego parametr
+                        // ?nip= z inną wartością, dokłada go coś po drodze — to błąd konfiguracji, nie usterka łącza.
+                        400 when e.Kod == "NIP_NIESPOJNY" => "Serwer dostał dwa różne NIP-y w jednym żądaniu",
+                        401 => "Klucz nieprawidłowy albo wygasł",
+                        403 => "Firma nie jest zatwierdzona w wezurlop",
+                        404 => "Serwer nie zna operacji „stan” — zaktualizuj aplikację wezurlop",
+                        409 => "Niezgodna wersja protokołu — zaktualizuj connector",
+                        422 => "NIP firmy jest niepoprawny — popraw go w programie kadrowym",
+                        429 or 503 => "Serwer prosi o chwilę przerwy",
+                        _ => $"Serwer odpowiedział błędem {e.Status}",
+                    };
+                    string szczegol = e.Status == 400 && e.Kod == "NIP_NIESPOJNY"
+                        ? "Connector wysyła NIP tylko nagłówkiem, więc parametr dokłada pośrednik po drodze albo działa starsza wersja connectora."
+                        : "";
+                    if (e.ZdarzenieId is string zd) szczegol += (szczegol.Length > 0 ? " " : "") + $"Zdarzenie {zd} — podaj je wsparciu wezurlop.";
+                    return new DialogPracy.Wynik(e.Status is 403 or 404 or 429 or 503 ? Poziom.Uwaga : Poziom.Blad,
+                                                 tekst, szczegol.Length > 0 ? szczegol : null);
+                }
+            });
+        return Task.CompletedTask;
     }
 
     IEnumerable<string> Nipy()
@@ -375,7 +375,6 @@ public sealed class EkranPolaczenie : Ekran
                     yield return Nip.Normalizuj(f.Nip);
     }
 
-    void Pokaz(string t, Poziom p, string szczegol) { _wynik.Text = t; _wynik.Poziom = p; Uklad.Pokaz(_wynik, true); _szczegol.Text = szczegol; }
 
     /// <summary>Adres i klucz — mozna zapisac tez sam adres (klucz dojdzie pozniej); zle wpisane wartosci blokuja zapis.</summary>
     ZmianaSekcji? PrzygotujPolaczenie(List<string> bledy)
