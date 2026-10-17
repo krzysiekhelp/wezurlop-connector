@@ -27,6 +27,14 @@ public sealed class EkranPolaczenie : Ekran
     readonly Przycisk _importSekretu = new() { Text = "Importuj sekret tożsamości…", Rodzaj = RodzajPrzycisku.Drugi, Width = 240 };
     readonly Label _stanSekretu = E.Opis("");
 
+    // Pasek przypiety nad trescia — tak samo jak w zakladce „R2 Platnik": podsumowanie po lewej,
+    // akcja po prawej. Dzieki Dock.Top zostaje na miejscu przy przewijaniu dlugiej karty.
+    readonly Panel _gora = new() { Dock = DockStyle.Top, Height = 64, BackColor = Styl.Tlo };
+    readonly Karta _pasekGorny = new() { Height = 60, Ramka = false, KolorTla = Styl.Tlo };
+    readonly Label _stanPolaczenia = E.Tekst("");
+
+    const int Wciecie = 12;
+
     static NumericUpDown Liczba() => new()
     { Minimum = Harmonogram.MinimalnyOdstepMinut, Maximum = 1440, Increment = 5, Width = 86, Font = Styl.Czcionka(11f), TextAlign = HorizontalAlignment.Right };
 
@@ -63,45 +71,65 @@ public sealed class EkranPolaczenie : Ekran
         _adres = E.Pole(k.Plik?.AdresSerwera ?? "");
         _klucz = E.Pole(Jawny(k.Plik?.KluczApi), true);
         int szer = Uklad.SzerokoscTresci;
-        int szerokaKolumna = 2 * Uklad.Kolumna + Uklad.Odstep;
+        int szerSekcji = szer - 2 * Wciecie;
 
-        // ---------- adres i klucz
-        var karta = new Karta { Width = szer };
-        int y = Uklad.NaglowekKarty(karta, "Połączenie z wezurlop",
-                                    "Connector sam łączy się z aplikacją — nie potrzebuje otwartych portów ani publicznego adresu.");
+        // ---------- pasek przypiety: stan po lewej, test po prawej
+        _pasekGorny.Width = szer;   // szerokosc PRZED kotwica — inaczej przycisk ucieka poza karte
+        _stanPolaczenia.Location = new Point(2, 18);
+        _testuj.Width = 190;
+        _testuj.Location = new Point(szer - _testuj.Width, 10);
+        _testuj.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _pasekGorny.Controls.AddRange(new Control[] { _stanPolaczenia, _testuj });
+        _pasekGorny.Location = new Point(0, 0);
+        _gora.Controls.Add(_pasekGorny);
+        Controls.Add(_gora);   // po Tresc — doki licza sie od konca, wiec pasek bierze gore, a tresc reszte
+        Tresc.Resize += (_, _) => DopasujGore();
+        DopasujGore();
+        OdswiezStanPaska();
+        // Po zapisie adresu albo klucza linia stanu ma pokazac nowa wartosc, a nie te sprzed zapisu.
+        k.Zapisano += () => BeginInvoke(new Action(OdswiezStanPaska));
 
-        var b1 = new Blok(null, null, szer);
+        // ---------- jedna karta mietowa, sekcje jako biale plyty (jak rozwinieta instalacja w „R2 Platnik")
+        var karta = new Karta { Width = szer, KolorTla = Styl.Mieta, KolorRamki = Styl.Zielony, OdstepCzesci = Wciecie };
+        int y = Uklad.NaglowekKarty(karta, "wezurlop — adres, klucz i harmonogram",
+                                    "Wszystko, czym connector łączy się z aplikacją tej firmy.") + Wciecie - Uklad.Duza;
+
+        void Plyta(Blok b)
+        {
+            b.Plyta = true;
+            b.Location = new Point(Wciecie, y);
+            karta.Controls.Add(b);
+            y += b.Height + Wciecie;
+        }
+
+        // ---------- sekcja 1: adres i klucz
         _adres.PlaceholderText = "https://";
         _klucz.Font = new Font("Consolas", 10f);
-        b1.PolaWiersz(new Pole("Adres aplikacji wezurlop", _adres, szerokaKolumna));
-        b1.Wiersz(E.Opis("Domena, pod którą działa aplikacja wniosków urlopowych tej firmy, np. https://urlopy.firma.pl"), Uklad.Srednia);
-        b1.PolaWiersz(new Pole("Klucz instalacji", _klucz, szerokaKolumna));
-        b1.Wiersz(_pokaz, Uklad.Mala);
-        b1.Wiersz(E.Opis("64 znaki szesnastkowe. Wydaje go administrator aplikacji wezurlop; zapisywany zaszyfrowany kluczem tej maszyny."), Uklad.Srednia);
-        b1.Przyciski(_testuj);
+        var zapiszPolaczenie = new PasekZapisu(k, "Zapisz połączenie", PrzygotujPolaczenie, wRzedzie: true) { Width = szerSekcji - 2 * Uklad.Margines };
+        var b1 = new Blok("Adres i klucz instalacji",
+                          "Connector sam łączy się z aplikacją — nie potrzebuje otwartych portów ani publicznego adresu.",
+                          szerSekcji);
+        b1.PolaRowno(new[] { "Adres aplikacji wezurlop", "Klucz instalacji" }, _adres, _klucz);
+        b1.Wiersz(_pokaz, 2);
+        b1.Wiersz(E.Opis("Domena, pod którą działa aplikacja wniosków urlopowych tej firmy, np. https://urlopy.firma.pl   ·   "
+                         + "klucz: 64 znaki szesnastkowe, wydaje go administrator aplikacji wezurlop; zapisywany zaszyfrowany kluczem tej maszyny."),
+                  Uklad.Srednia);
+        b1.Przyciski(zapiszPolaczenie.Przycisk);
+        b1.Wiersz(zapiszPolaczenie, Uklad.Mala);
         b1.Wiersz(_wynik, Uklad.Mala);
         b1.Wiersz(_szczegol, 0);
-        b1.Location = new Point(0, y);
-        karta.Controls.Add(b1.Domknij());
-        y += b1.Height;
-
-        var zapiszPolaczenie = new PasekZapisu(k, "Zapisz połączenie", PrzygotujPolaczenie)
-        { Location = new Point(0, y), Width = szer, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-        karta.Controls.Add(zapiszPolaczenie);
-        karta.Height = y + zapiszPolaczenie.Height;
+        var bpol = b1.Domknij();
+        Plyta(bpol);
         _pokaz.CheckedChanged += (_, _) => _klucz.UseSystemPasswordChar = !_pokaz.Checked;
         _testuj.Click += async (_, _) => await TestujAsync();
-        zapiszPolaczenie.SledzZmiany(karta);
-        Dodaj(karta);
+        zapiszPolaczenie.SledzZmiany(bpol);
 
-        // ---------- tozsamosc osob (sekret i odcisk)
-        var ks = new Karta { Width = szer };
-        int ys = Uklad.NaglowekKarty(ks, "Tożsamość osób w wezurlop",
+        // ---------- sekcja 2: tozsamosc osob (sekret i odcisk)
+        var bs = new Blok("Tożsamość osób w wezurlop",
             "Identyfikatory osób connector liczy z sekretu tej instalacji — sekret nigdy nie opuszcza tej maszyny. "
-            + "Przy przenosinach na inny komputer trzeba go przenieść, inaczej te same osoby założą się w wezurlop po raz drugi.");
-
-        var bs = new Blok(null, null, szer);
-        var wierszOdcisku = new Panel { BackColor = Color.Transparent, Width = szerokaKolumna, Height = Styl.WysokoscKontrolki };
+            + "Przy przenosinach na inny komputer trzeba go przenieść, inaczej te same osoby założą się w wezurlop po raz drugi.",
+            szerSekcji);
+        var wierszOdcisku = new Panel { BackColor = Color.Transparent, Width = szerSekcji - 2 * Uklad.Margines, Height = Styl.WysokoscKontrolki };
         var lo = E.Opis("Odcisk tożsamości");
         lo.Location = new Point(0, 0);
         _odcisk.Font = new Font("Consolas", 11f);
@@ -113,9 +141,7 @@ public sealed class EkranPolaczenie : Ekran
         bs.Wiersz(wierszOdcisku, Uklad.Srednia);
         bs.Przyciski(_eksportSekretu, _importSekretu);
         bs.Wiersz(_stanSekretu, Uklad.Mala);
-        bs.Location = new Point(0, ys);
-        ks.Controls.Add(bs.Domknij());
-        ks.Height = ys + bs.Height + Uklad.Mala;
+        Plyta(bs.Domknij());
 
         _kopiujOdcisk.Click += (_, _) => { Clipboard.SetText(_odcisk.Text); _stanSekretu.ForeColor = Styl.Szary; _stanSekretu.Text = "Odcisk skopiowany."; };
         _eksportSekretu.Click += (_, _) =>
@@ -136,14 +162,10 @@ public sealed class EkranPolaczenie : Ekran
             }
             catch (Exception e) { PokazSekret("Nie wgrano: " + e.Message, Styl.Koral); }
         };
-        Dodaj(ks);
         OdswiezSekret();
 
-        // ---------- harmonogram
+        // ---------- sekcja 3: harmonogram
         var h = k.Plik?.Harmonogram ?? Harmonogram.Domyslny();
-        var cz = new Karta { Width = szer };
-        int yh = Uklad.NaglowekKarty(cz, "Harmonogram synchronizacji",
-            "Jedna synchronizacja: odczyt programu kadrowego, wysyłka zmian i zapis zaakceptowanych urlopów.");
 
         _odstep.Value = Math.Clamp(h.OdstepMinut, Harmonogram.MinimalnyOdstepMinut, 1440);
         _poza.Value = Math.Clamp(h.OdstepPozaMinut, Harmonogram.MinimalnyOdstepMinut, 1440);
@@ -155,7 +177,11 @@ public sealed class EkranPolaczenie : Ekran
             kontrolka.Width = 110;
         }
 
-        var bg = new Blok("W godzinach pracy", null, szer);
+        // Jedna plyta na caly harmonogram; „w godzinach pracy" i „poza" rozdziela podtytul, nie osobna karta.
+        int szerWiersza = szerSekcji - 2 * Uklad.Margines;
+        var bg = new Blok("Harmonogram synchronizacji",
+                          "Jedna synchronizacja: odczyt programu kadrowego, wysyłka zmian i zapis zaakceptowanych urlopów.",
+                          szerSekcji);
         var godziny = new Panel { BackColor = Color.Transparent, Width = Uklad.Kolumna, Height = Styl.WysokoscKontrolki };
         _od.Location = new Point(0, 0); _od.Width = 110;
         var doTekst = E.Tekst("do"); doTekst.Location = new Point(122, 9);
@@ -163,7 +189,7 @@ public sealed class EkranPolaczenie : Ekran
         godziny.Controls.AddRange(new Control[] { _od, doTekst, _do });
         bg.PolaWiersz(new Pole("Synchronizuj co (minut)", _odstep, Uklad.Kolumna), new Pole("Godziny pracy", godziny, Uklad.Kolumna));
 
-        var dni = new Panel { BackColor = Color.Transparent, Width = szerokaKolumna, Height = 44 };
+        var dni = new Panel { BackColor = Color.Transparent, Width = szerWiersza, Height = 44 };
         var ldni = E.Opis("Dni pracy"); ldni.Location = new Point(0, 0);
         dni.Controls.Add(ldni);
         string[] nazwy = { "Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd" };
@@ -177,46 +203,53 @@ public sealed class EkranPolaczenie : Ekran
             _dni[i].CheckedChanged += (_, _) => Podsumuj();
             dni.Controls.Add(_dni[i]);
         }
-        bg.Wiersz(dni, Uklad.Mala);
-        bg.Location = new Point(0, yh);
-        cz.Controls.Add(bg.Domknij());
-        yh += bg.Height;
+        bg.Wiersz(dni, Uklad.Srednia);
 
-        var bp = new Blok("Poza godzinami pracy", null, szer);
-        var pozaRzad = new Panel { BackColor = Color.Transparent, Width = szerokaKolumna, Height = Styl.WysokoscKontrolki };
+        var podtytulPoza = E.Tekst("Poza godzinami pracy", true);
+        bg.Wiersz(podtytulPoza, 4);
+        var pozaRzad = new Panel { BackColor = Color.Transparent, Width = szerWiersza, Height = Styl.WysokoscKontrolki };
         _pozaCo.Location = new Point(0, 10); _pozaCo.Checked = !h.WstrzymajPoza;
         _poza.Location = new Point(48, 0); _poza.Width = 110;
         var minut = E.Tekst("minut"); minut.Location = new Point(168, 9);
         _wstrzymaj.Location = new Point(240, 10); _wstrzymaj.Checked = h.WstrzymajPoza;
         pozaRzad.Controls.AddRange(new Control[] { _pozaCo, _poza, minut, _wstrzymaj });
-        bp.Wiersz(pozaRzad, Uklad.Srednia);
-        bp.Wiersz(_podsumowanie, Uklad.Mala);
-        bp.Wiersz(E.Opis("Serwer wezurlop może odstęp wydłużyć (np. prosząc o przerwę) — nigdy nie skróci go poniżej harmonogramu."), Uklad.Mala);
-        bp.Location = new Point(0, yh);
-        cz.Controls.Add(bp.Domknij());
-        yh += bp.Height;
+        bg.Wiersz(pozaRzad, Uklad.Srednia);
+        bg.Wiersz(_podsumowanie, Uklad.Mala);
+        bg.Wiersz(E.Opis("Serwer wezurlop może odstęp wydłużyć (np. prosząc o przerwę) — nigdy nie skróci go poniżej harmonogramu."), Uklad.Srednia);
 
-        var zapiszHarmonogram = new PasekZapisu(k, "Zapisz harmonogram", PrzygotujHarmonogram)
-        { Location = new Point(0, yh), Width = szer, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-        cz.Controls.Add(zapiszHarmonogram);
-        cz.Height = yh + zapiszHarmonogram.Height;
+        var zapiszHarmonogram = new PasekZapisu(k, "Zapisz harmonogram", PrzygotujHarmonogram, wRzedzie: true) { Width = szerSekcji - 2 * Uklad.Margines };
+        bg.Przyciski(zapiszHarmonogram.Przycisk);
+        bg.Wiersz(zapiszHarmonogram, Uklad.Mala);
+        var bharm = bg.Domknij();
+        Plyta(bharm);
 
         foreach (var n in new[] { _odstep, _poza }) n.ValueChanged += (_, _) => Podsumuj();
         foreach (var d in new[] { _od, _do }) d.ValueChanged += (_, _) => Podsumuj();
         foreach (var r in new[] { _pozaCo, _wstrzymaj }) r.CheckedChanged += (_, _) => { _poza.Enabled = _pozaCo.Checked; Podsumuj(); };
         _poza.Enabled = _pozaCo.Checked;
-        zapiszHarmonogram.SledzZmiany(cz);
-        Dodaj(cz);
-        Podsumuj();
+        zapiszHarmonogram.SledzZmiany(bharm);
 
-        // ---------- gdzie leza ustawienia
-        var info = new Karta { Width = szer, KolorTla = Styl.Niebieski, Ramka = false };
-        var bi = new Blok(null, null, szer, zLinia: false);
-        bi.Wiersz(E.Tekst("Plik konfiguracji: " + k.SciezkaKonfiguracji), Uklad.Mala);
-        bi.Location = new Point(0, Uklad.Srednia);
-        info.Controls.Add(bi.Domknij());
-        info.Height = Uklad.Srednia + bi.Height + Uklad.Srednia;
-        Dodaj(info);
+        karta.Height = y + Uklad.Mala;
+        Dodaj(karta);
+        Podsumuj();
+    }
+
+    /// <summary>Przypiety pasek trzyma te sama szerokosc co karta pod nim — inaczej przycisk ucieka na bok.</summary>
+    void DopasujGore()
+    {
+        int w = Tresc.Width - Tresc.Padding.Horizontal - SystemInformation.VerticalScrollBarWidth - 6;
+        _pasekGorny.Width = Math.Max(400, Math.Min(w, Uklad.SzerokoscTresci));
+    }
+
+    /// <summary>Jedna linia stanu w pasku: adres i to, czy klucz w ogole jest — bez wartosci klucza.</summary>
+    void OdswiezStanPaska()
+    {
+        string adres = _k.Plik?.AdresSerwera is { Length: > 0 } a
+            ? a.Replace("https://", "").Replace("http://", "").TrimEnd('/')
+            : "adres nieustawiony";
+        bool maKlucz = !string.IsNullOrWhiteSpace(_k.Plik?.KluczApi);
+        _stanPolaczenia.Text = $"{adres}   ·   {(maKlucz ? "klucz zapisany" : "brak klucza")}";
+        _stanPolaczenia.ForeColor = maKlucz && _k.Plik?.AdresSerwera is { Length: > 0 } ? Styl.Granat : Styl.Koral;
     }
 
     void PokazSekret(string t, Color kolor) { _stanSekretu.ForeColor = kolor; _stanSekretu.Text = t; }
