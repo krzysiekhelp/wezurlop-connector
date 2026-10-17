@@ -208,7 +208,11 @@ public class Karta : Panel
     {
         base.OnSizeChanged(e);
         if (OdstepCzesci <= 0) return;
-        foreach (Control c in Controls) if (c is Blok) c.Width = Width - 2 * OdstepCzesci;
+        foreach (Control c in Controls) if (c is Blok) c.Width = Math.Max(0, Width - 2 * OdstepCzesci);
+        // Zmiana szerokosci zmienia TAKZE wysokosci sekcji, wiec trzeba je ustawic od nowa jedna pod druga.
+        // Bez tego sekcja ponizej zostawala na pozycji policzonej ze starych wysokosci i nachodzila na
+        // poprzednia — zmierzone: przerwa -36 px miedzy „Tozsamoscia" a „Harmonogramem" (17.10.2026).
+        Przelicz();
     }
 
     public Karta()

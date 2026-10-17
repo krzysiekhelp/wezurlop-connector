@@ -229,7 +229,10 @@ public sealed class EkranPolaczenie : Ekran
         _poza.Enabled = _pozaCo.Checked;
         zapiszHarmonogram.SledzZmiany(bharm);
 
-        karta.Height = y + Uklad.Mala;
+        // Pozycje plyt ustala karta, nie moje sumowanie y: wysokosci sekcji zmieniaja sie jeszcze po
+        // zbudowaniu (odcisk tozsamosci, podsumowanie harmonogramu), a stare „y" dawalo nachodzace plyty.
+        // Ponizsze y sluzy juz tylko do ustalenia KOLEJNOSCI sekcji.
+        karta.Przelicz();
         Dodaj(karta);
         Podsumuj();
     }

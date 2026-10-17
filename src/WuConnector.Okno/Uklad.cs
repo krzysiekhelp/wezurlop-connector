@@ -348,6 +348,10 @@ public sealed class Blok : Panel
     {
         l.Height = Uklad.WysokoscTekstu(l.Text, l.Font, l.Width);
         Przelicz();
+        // Blok urosl, wiec karta musi przestawic to, co pod nim. Bez tego sekcja pod spodem zostawala
+        // na starym miejscu i NACHODZILA na ta, ktora urosla — przy plytach widac to jako brak odstepu
+        // miedzy nimi (zmierzone: -36 px na zakladce „Polaczenie", 17.10.2026).
+        (Parent as Karta)?.Przelicz();
         (Parent as Karta)?.Przelicz();
     }
 
