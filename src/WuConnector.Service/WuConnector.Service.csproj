@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <!-- Usluga Windows connectora. NIGDY nie laduje R2PApi10.dll — zapis idzie przez WuConnector.Worker (x86). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>WuConnector.Service</AssemblyName>
+    <RootNamespace>WuConnector.Service</RootNamespace>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WuConnector.Core\WuConnector.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    Proces roboczy w worker\ obok uslugi — tak samo jak przy oknie i w paczce z build\publikuj.ps1.
+    Bez tego usluga uruchomiona wprost z bin (pojedynczy cykl do testow) nie ma czym zapisac urlopu.
+  -->
+  <Target Name="KopiujProcesRoboczy" AfterTargets="Build">
+    <!-- Budujemy go zadaniem MSBuild, a nie referencja projektu: referencja przeniosłaby na niego
+         RuntimeIdentifier win-x64 z publikacji, a proces roboczy jest net48 x86. -->
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\WuConnector.Worker\WuConnector.Worker.csproj"
+             Targets="Restore;Build" Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PlatformTarget;TargetFramework;PublishDir;_IsPublishing" />
+    <ItemGroup>
+      <PlikiProcesuRoboczego Include="$(MSBuildThisFileDirectory)..\WuConnector.Worker\bin\$(Configuration)\net48\**\*"
+                             Exclude="$(MSBuildThisFileDirectory)..\WuConnector.Worker\bin\$(Configuration)\net48\**\*.pdb" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PlikiProcesuRoboczego)"
+          DestinationFolder="$(OutDir)worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

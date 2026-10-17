@@ -1,0 +1,169 @@
+# Stan prac — WU_Connector
+
+Dokument przeżywa wyczerpanie kontekstu sesji. Zapisuje **stan**, nie historię:
+co jest zrobione, co jest pułapką i co czeka. Historia jest w `git log`.
+
+**Ostatnia aktualizacja: 17.10.2026.** Źródła: weryfikacja w repozytorium i w systemie
+(commity, wersje, usługa, rejestr) + przekazanie z równoległej sesji („AGENT B”),
+która wykonała pracę nad oknem i pierwszą instalację z MSI.
+Przy faktach sprawdzonych bezpośrednio stoi **(sprawdzone)**.
+
+---
+
+## 1. Punkt wyjścia
+
+- Repozytorium `C:\WU_Connector`, gałąź **`main`**. **Historia zaczyna się od jednego czystego commita z 17.10.2026** — decyzja użytkownika po audycie: poprzednie 71 commitów zawierało prawdziwe dane osobowe i dane klienta, więc nie nadawały się do wypchnięcia.
+- **Repozytorium nie ma jeszcze zdalnego.** Docelowo prywatne repozytorium na koncie GitHub użytkownika.
+- **Stara historia (71 commitów, gałęzie `main` i `konta-mssql`) jest zarchiwizowana lokalnie** w `C:\WU_Connector_archiwum\` — lustro `connector-historia-2026-10-17.git` i paczka `connector-historia-2026-10-17.bundle`. **Nie wolno jej kopiować poza tę maszynę ani wypychać** — zawiera dane, które właśnie z repozytorium usunięto. Narzędzie `tools\Podglad` leży tam w `poza-repo\`.
+- Dokumentacja projektu leży osobno: `C:\Symfonia\_projekt-urlopy`. Numery w nawiasach (22.23, 22.24…) to rozdziały `USTALENIA-2026-09-13-srodowisko-i-API.md`.
+
+## 2. Co jest zainstalowane na tej maszynie
+
+Pierwsza prawdziwa instalacja z MSI jest wykonana — ręczna rejestracja usługi z `artefakty\app` została usunięta (`sc delete`).
+
+- Usługa **`WU_Connector`**, stan `RUNNING`, obraz `C:\Program Files\WU_Connector\WuConnector.Service.exe`, auto-start, LocalSystem. **(sprawdzone)**
+- Autostart okna: `HKLM\Software\Microsoft\Windows\CurrentVersion\Run\WU_Connector` = `"C:\Program Files\WU_Connector\WuConnector.Okno.exe" --zasobnik`. **(sprawdzone)**
+- Paczka: `artefakty\WU_Connector-0.1.0.msi`, 44 253 178 B, 16.10.2026 22:38. **(sprawdzone)**
+- Katalog `worker\` na miejscu (proces roboczy net48 x86 obok okna i obok usługi).
+- Po starcie usługa przeszła cykl obu firm (850 ms i 233 ms), `tenant.wezurlop.pl` odpowiada.
+- Użytkownik bez uprawnień **czyta** konfigurację i dziennik; zapis podnosi uprawnienia.
+  `C:\ProgramData\WU_Connector` jest niedostępny z sesji bez elewacji — ACL (SYSTEM + Administratorzy) działa. **(sprawdzone)**
+
+## 3. PUŁAPKI — przeczytaj przed wdrożeniem
+
+### 3.1 MSI nie nadpisuje plików o tej samej wersji (blokujące dla aktualizacji)
+
+W dzienniku instalacji: „Won't Overwrite; Existing file is of an equal version”.
+Wszystkie trzy projekty mają na sztywno `<Version>0.1.0</Version>` (`Okno`, `Service`, `Worker`). **(sprawdzone)**
+
+Skutek: wgranie nowej paczki z tym samym numerem **cicho zostawia stare binaria**.
+Przy pierwszym teście trzeba było odinstalować, wyczyścić `Program Files` i zainstalować od zera.
+`MajorUpgrade` w `Package.wxs` jest skonfigurowany, więc **wyższa** wersja podmieni starszą — problem dotyczy wyłącznie równych numerów.
+
+**Czeka na decyzję:** licznik kompilacji w `build\publikuj.ps1`, żeby każda paczka miała unikalny numer.
+Bez tego **pierwsza aktualizacja u klienta nic nie zmieni.**
+
+### 3.2 Klucz manifestu bibliotek R2 jest DEWELOPERSKI (22.23) — blokujące
+
+Do wymiany przed wdrożeniem u klienta.
+
+### 3.3 Nic nie jest podpisane Authenticode
+
+`WuConnector.Okno.exe` i `WU_Connector-0.1.0.msi` → `Status: NotSigned`. **(sprawdzone)**
+
+Skutek praktyczny: Windows pokazuje żółte okno UAC „Nieznany wydawca” z ikoną generyczną.
+**To nie jest błąd ikony** — `ApplicationIcon` jest ustawiony, a `Grafika\ikona.ico` ma pełny zestaw
+16 / 24 / 32 / 48 / 64 / 128 / 256 px. **(sprawdzone)** Ładne okno UAC z nazwą wydawcy i maskotką
+wezurlop wymaga certyfikatu code signing — zakupu u CA, nie zmiany w kodzie.
+**Jeden certyfikat załatwia to razem z 3.2.**
+
+### 3.4 Usługa pracuje jako SYSTEM i nie ma dostępu do baz R2 (22.24)
+
+Dlatego z sekcji „Połączenie z bazą programu kadrowego” usunięto wybór
+„Windows — konto usługi (SYSTEM)”; zostaje login SQL (konto `wu_*`, tylko odczyt).
+Konta zalogowanego człowieka nie da się tam użyć, bo usługa nigdy na nim nie pracuje.
+
+Stare konfiguracje z pustym `LoginSql` nadal działają (`CzytnikSql` robi wtedy logowanie zintegrowane),
+ale `PlikKonfiguracji.Rozwin` dopisuje ostrzeżenie do dziennika:
+„instalacja X czyta bazę kontem usługi (SYSTEM) — załóż konto SQL w oknie konfiguracji”.
+
+**Objaw zaobserwowany 16.10:** 7 błędów „odczyt SQL nieudany” między 19:53 a 21:00; ustały po
+zapisaniu sekcji SQL i restarcie usługi — usługa miała nieaktualne hasło SQL.
+
+### 3.5 Autozapis zaznaczenia firmy wywołuje UAC przy każdym kliknięciu
+
+Zaznaczenie firmy zapisuje się od razu, bez przycisku. Bez praw administratora **każde kliknięcie
+podnosi uprawnienia** (zapis w `ProgramData`). Buforowanie tych zapisów nie zostało uzgodnione.
+
+### 3.6 Proces roboczy musi być skopiowany przy każdym buildzie
+
+Kopiuje się do `worker\` obok okna **oraz** obok usługi. Wcześniej trafiał tam tylko przy publikacji
+paczki, więc test logowania w wersji deweloperskiej kończył się „Brak procesu roboczego”.
+Buduje go **zadanie MSBuild** (`Targets=Restore;Build`, `RemoveProperties=RuntimeIdentifier;SelfContained;PlatformTarget;…`),
+**nie `ProjectReference`** — referencja przenosiła na niego `RuntimeIdentifier win-x64` z publikacji
+i wywracała `dotnet publish`.
+
+### 3.7 Build jest blokowany przez chodzące okno
+
+Uruchomione `WuConnector.Okno.exe` trzyma `WuConnector.Core.dll` w katalogu wyjściowym
+(`MSB3027` / `MSB3021`). Jeśli okno chodzi **z podniesionymi uprawnieniami**, sesja bez elewacji
+go nie ubije („Odmowa dostępu”) — trzeba je zamknąć ręcznie. **(sprawdzone)**
+Uwaga: błąd kopiowania wypada **przed** kompilacją, więc **maskuje błędy kompilacji** — po takim
+niepowodzeniu nie wolno zakładać, że kod się kompiluje.
+
+## 4. Okno konfiguracji — stan po przebudowie
+
+### Zakładka „R2 Płatnik” (dawniej „Instalacje i firmy”)
+
+- Pasek nad listą (licznik instalacji, „Szukaj instalacji…”, „Zarządzaj kontami MSSQL…”) jest **przypięty poza obszarem przewijania** — rozwijanie instalacji go nie zasłania.
+- Nagłówek karty instalacji w trzech rzędach: `[x] Aktywne | nazwa | strzałka` po prawej; pod spodem ścieżka (jedna linia, wielokropek); niżej znaczniki wersji (program / baza / biblioteka API). Znacznik „synchronizowana / wyłączona” usunięty — mówi o tym „Aktywne”.
+- **„Aktywne” jest trójstanowe** i steruje wszystkimi firmami naraz: pełne = wszystkie, puste = żadna, pośrednie = część. **Nie ma osobnej flagi „instalacja włączona”** — stan wynika z pola `Aktywna` przy firmach, więc wyłączenie jednej z kilku firm **nie** wyłącza instalacji.
+- Firmy jako lista: znacznik przy każdej (także przy jednej), nazwa, baza pod spodem, NIP po prawej, kreski między wierszami. Firma bez bazy wyszarzona ze znacznikiem „nie da się synchronizować”. W nagłówku sekcji licznik „2 z 3” i skrót „Zaznacz / Odznacz wszystkie” (widoczny dopiero przy kilku firmach zdatnych).
+- **Zapis rozbity na sekcje**, każda ze swoim przyciskiem obok „Testuj…”: „Zapisz połączenie z bazą” i „Zapisz konto R2Płatnika” (albo „Zapisz konto i bibliotekę”, gdy instalacja nie ma biblioteki API). Zapis sekcji bierze wpis z konfiguracji i nadpisuje **wyłącznie** pola tej sekcji (`EkranInstalacje.TylkoSekcja`) — niedokończone zmiany w drugiej sekcji nie jadą razem.
+- Rozwinięcie instalacji **nie przewija już listy do góry**: liczone jest przesunięcie karty po zwinięciu pozostałych i suwak idzie o tyle samo. Przebudowa listy po zapisie zachowuje przewinięcie i ponownie rozwija tę samą instalację.
+
+### Okno testów (`DialogPracy` + `Kolowrotek` + `IkonaStanu`)
+
+- „Testuj SQL” i „Testuj logowanie” pokazują wynik **w oknie modalnym**. W trakcie kręci się kołowrotek (okna nie da się wtedy zamknąć — zadanie i tak by nie wróciło), po zakończeniu kołowrotek zamienia się w miejscu w ikonę stanu, obok stoi wynik.
+- Treść wyniku: „Powodzenie” albo **sama treść błędu** (np. „Błędne hasło użytkownika &lt;login&gt;”). Bez numerów kont, wersji bibliotek i czasów — **na wyraźne życzenie użytkownika**.
+- Komunikaty wyników zniknęły z kart — wynik jest w jednym miejscu.
+  *Uwaga dla przyszłych sesji: wcześniejsza łatka przewijająca wynik do widoku w karcie (`NaWidok`, commit `ba76e42`) jest tym rozwiązaniem zastąpiona i słusznie jej w kodzie nie ma — modal nie może schować się pod krawędzią okna.*
+
+### Konta MSSQL
+
+- Okno „Zarządzaj kontami MSSQL” pokazuje **tylko konta SQL Servera** — konta Windows (lokalne i domenowe) odfiltrowane, kolumna TYP usunięta, nazwa konta bierze zwolnione miejsce.
+- Okno pracuje w zakresie **serwera**, nie jednej instalacji, i **nic nie zapisuje do konfiguracji connectora** — login i hasło użytkownik wpisuje potem w karcie instalacji.
+- Konta connectora: `wu_*`, tylko odczyt. **Nie ruszać kont Optimy `CDN*`.**
+- Connector potrzebuje: baza `_dane_N` — pełny odczyt; baza `_bin` — tylko `FIRM`, `VERSION` (SELECT) i `fn_Kod` (EXECUTE). Dlatego zaznaczanie `_bin` i `_dane_` jest sprzężone w obie strony.
+
+### Wygląd — decyzja: WARIANT A
+
+Rozwinięta (edytowana) instalacja ma **całe tło miętowe**, a sekcje leżą na niej jako **białe płyty
+z delikatną zieloną ramką**; granicą jest mięta widoczna między płytami — żadnych kresek ani pasków
+przez całą szerokość. Zwinięte instalacje zostają białe. Lista firm nie rysuje własnej ramki (ma ją płyta),
+zostały same kreski między firmami.
+
+W kodzie: `Karta.OdstepCzesci` (12 px wcięcia i odstępu), `Blok.Plyta`.
+**Nieużyte warianty zostały w kodzie:** `Uklad.Akcent` (zielona kreska) i `Uklad.PasekTytulu` —
+powrót to jedna zmiana w konstruktorze `Blok`.
+
+Dodatkowo: pola sekcji na pełną szerokość (`Blok.PolaRowno`) — Serwer / Login / Hasło w jednym rzędzie;
+okno poszerzone do **1220 px**, żeby kolumna treści miała projektowe 840 px (wcześniej dostawała 818
+i opisy sięgały ramki); `Blok` przelicza swój opis przy zmianie szerokości.
+
+Okno ma **stały rozmiar**: bez maksymalizacji i bez zmiany rozmiaru (`FixedSingle`, `WM_GETMINMAXINFO`, `SC_MAXIMIZE`) — przy rozciąganiu układ wyglądał źle.
+
+### Model podnoszenia uprawnień
+
+Nie ma przycisku „Otwórz jako administrator”. UAC wypada **dopiero po zatwierdzeniu akcji**, która go
+wymaga: okno przekazuje podniesionemu procesowi sekcję konfiguracji (`ZmianaSekcji`) przez
+`--konfiguruj --zastosuj <plik> --ekran <nazwa>`, a operacje na usłudze przez `--usluga start|stop`.
+
+### Diagnostyka okna
+
+- Dziennik okna: **`%LOCALAPPDATA%\WU_Connector\okno-RRRR-MM-DD.log`** — puls co minutę (uchwyty GDI/USER, pamięć, liczba okien), nieobsłużone wyjątki z obu wątków, wpisy START / KONIEC. **(sprawdzone — plik `okno-2026-10-16.log` istnieje)**
+- Pierwotnie pisał do `ProgramData`, ale użytkownik bez uprawnień nie może tam pisać i dziennik **milcząco się nie tworzył**.
+- Zawieszanie okna użytkownik uznał za temat nieaktualny; diagnostyka zbierze dane, gdyby wróciło.
+- `CA1416` usunięte: odcisk sekretu (samo SHA-256) wyprowadzony z windowsowego `PlikKonfiguracji` do osobnej klasy `Konfiguracja.Odcisk`. Oznaczenie całego `Core` jako windowsowego odrzucone — przenosiło ostrzeżenia na narzędzia.
+- Ramka karty nie jest już przerywana przez linie sekcji i stopki zapisu (`Uklad.Linia` wcięta o piksel, `PasekZapisu` maluje tło sam, `Karta.Przelicz` zostawia piksel na dolną kreskę).
+
+## 5. Co czeka
+
+Kolejność wedle wagi, nie chronologii. **Żadne z tych zadań nie jest rozpoczęte.**
+
+1. **Unikalny numer każdej paczki** w `build\publikuj.ps1` (licznik kompilacji) — patrz 3.1. Czeka na decyzję użytkownika.
+2. **Test ścieżki aktualizacji:** instalacja N, potem N+1 — czy pliki się podmieniają, czy konfiguracja i sekrety w `ProgramData` zostają, czy nie robią się dwa wpisy w „Programach i funkcjach”. Dotąd przetestowana jest **wyłącznie pierwsza instalacja.**
+3. **Wymiana deweloperskiego klucza manifestu** (22.23) — blokujące dla wdrożenia.
+4. **Certyfikat code signing** dla EXE i MSI — patrz 3.3; domyka też punkt 3.
+5. **Grupa minimalna uprawnień konta R2** (22.16): konto techniczne connectora siedzi wciąż w grupie „Kadry — wprowadzanie”. Po utworzeniu grupy: przepięcie konta i testy zapisu / edycji / usunięcia cudzego wpisu (`F6A`/`F8A`) / braku uprawnień. R2 pozwala grupę wyeksportować i zaimportować → robimy raz i powielamy u klientów.
+6. **Zapis dzisiejszych ustaleń w `C:\Symfonia\_projekt-urlopy` i `CLAUDE.md`** (pułapka wersji MSI, dziennik okna w LOCALAPPDATA, kopiowanie workera, nowy wygląd) — niezrobione. `CLAUDE.md` zmieniamy tylko na wyraźne polecenie użytkownika.
+7. **Sprawdzenie okna na czystej maszynie dla użytkownika bez praw administratora** — tutaj plik konfiguracji istniał wcześniej i mógł odziedziczyć starsze ACL.
+8. **Protokół tenanta: tura A3–A7 i etap B** — czekają na sygnał nadzoru. **Przed etapem B usunąć z R2 wpisy testowe `urlop:12315` i `urlop:12316`.**
+
+## 6. Zasady, o których łatwo zapomnieć
+
+- Odczyt **wyłącznie SQL**, zapis urlopu **wyłącznie API**. Nigdy `INSERT`/`UPDATE` na tabelach kadrowo-płacowych.
+- `AccessViolationException` z API **nie da się przechwycić** w .NET 4+ → osobny proces roboczy jest **koniecznością**, nie wygodą.
+- Po nieudanym `TablePost` **obowiązkowo `TableCancel`**. Na koniec `CloseAllTables` → `LogoffUser` → `FreeAllDataModules` → `ApiFinalize`.
+- To maszyna **testowa z kopią bazy produkcyjnej**, z prawdziwymi danymi osobowymi. Dane wychodzą **tylko** kanałem `tenant.wezurlop.pl`. PESEL, adresy, kwoty i kody chorób **nigdy**. Gdyby pojawiła się wątpliwość, że to jednak produkcja — **zatrzymać się i zapytać**.
+- **Do repozytorium nie trafiają prawdziwe dane osobowe ani dane klienta** — zasada projektu z 17.10.2026. Dotyczy nazwisk, sald, nieobecności, a **tak samo** NIP-ów, nazw firm, nazw hostów i loginów. W kodzie, testach i dokumentacji stoją wartości **jawnie fikcyjne** (`ALFA`, `BETA`, `SERWER-DEMO`, `WNIOSKI_DEMO`, NIP-y `1234567009` i `9876543210`) albo opis bez wartości. Wartości prawdziwe żyją w konfiguracji i w zmiennych środowiskowych: `WU_R2_HASLO`, `WU_TEST_SQL_SERWER`, `WU_TEST_SQL_BAZY`.

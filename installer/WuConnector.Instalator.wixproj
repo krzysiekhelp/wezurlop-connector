@@ -1,0 +1,17 @@
+﻿<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <!-- Budowane przez build\publikuj.ps1 — najpierw publikacja aplikacji do artefakty\app. -->
+  <PropertyGroup>
+    <Wersja Condition="'$(Wersja)' == ''">0.1.0</Wersja>
+    <OutputName>WU_Connector-$(Wersja)</OutputName>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <DefineConstants>Wersja=$(Wersja);Aplikacja=$(MSBuildThisFileDirectory)..\artefakty\app</DefineConstants>
+    <OutputPath>$(MSBuildThisFileDirectory)..\artefakty\</OutputPath>
+    <SuppressIces>ICE61</SuppressIces>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
+  </ItemGroup>
+
+</Project>

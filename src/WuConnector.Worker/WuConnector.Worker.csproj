@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Proces roboczy: jedyny element connectora, ktory laduje R2PApi10.dll.
+    Biblioteka jest natywna, 32-bitowa (Delphi) — dlatego net48 i x86, nie AnyCPU.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <Prefer32Bit>true</Prefer32Bit>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>WuConnector.Worker</AssemblyName>
+    <RootNamespace>WuConnector.Worker</RootNamespace>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WuConnector.Contracts\WuConnector.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

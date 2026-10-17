@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WuConnector.Contracts/WuConnector.Contracts.csproj" />
+    <Project Path="src/WuConnector.Core/WuConnector.Core.csproj" />
+    <Project Path="src/WuConnector.Okno/WuConnector.Okno.csproj" />
+    <Project Path="src/WuConnector.Service/WuConnector.Service.csproj" />
+    <Project Path="src/WuConnector.Worker/WuConnector.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WuConnector.Tests/WuConnector.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/AtrapaTenanta/AtrapaTenanta.csproj" />
+    <Project Path="tools/Manifest/Manifest.csproj" />
+  </Folder>
+</Solution>

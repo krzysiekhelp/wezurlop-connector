@@ -1,0 +1,53 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Okno konfiguracji i ikona w zasobniku. Wyglad: wezurlop.pl (ARCHITEKTURA-agenta.md §8). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>WuConnector.Okno</AssemblyName>
+    <RootNamespace>WuConnector.Okno</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Version>0.1.0</Version>
+    <!-- Ikona aplikacji = favicon wezurlop.pl (ta sama maskotka); skrot z instalatora dziedziczy ja z EXE. -->
+    <ApplicationIcon>Grafika\ikona.ico</ApplicationIcon>
+    <!-- Kontrolki rysowane recznie, bez projektanta WinForms — serializacja wlasciwosci do Designer.cs niepotrzebna. -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Grafika\*.png" LogicalName="%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Grafika\ikona.ico" LogicalName="ikona.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WuConnector.Core\WuConnector.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    Proces roboczy ma lezec w worker\ obok okna — tak jak po instalacji (build\publikuj.ps1 robi to samo
+    dla paczki). Bez tego test logowania do R2Platnika w wersji deweloperskiej konczy sie komunikatem
+    „Brak procesu roboczego”, bo Kontekst.SciezkaWorkera szuka go wlasnie tam.
+  -->
+  <Target Name="KopiujProcesRoboczy" AfterTargets="Build">
+    <!-- Budujemy go zadaniem MSBuild, a nie referencja projektu: referencja przeniosłaby na niego
+         RuntimeIdentifier win-x64 z publikacji, a proces roboczy jest net48 x86. -->
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\WuConnector.Worker\WuConnector.Worker.csproj"
+             Targets="Restore;Build" Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PlatformTarget;TargetFramework;PublishDir;_IsPublishing" />
+    <ItemGroup>
+      <PlikiProcesuRoboczego Include="$(MSBuildThisFileDirectory)..\WuConnector.Worker\bin\$(Configuration)\net48\**\*"
+                             Exclude="$(MSBuildThisFileDirectory)..\WuConnector.Worker\bin\$(Configuration)\net48\**\*.pdb" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PlikiProcesuRoboczego)"
+          DestinationFolder="$(OutDir)worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>
+
