@@ -115,6 +115,8 @@ public sealed class OknoGlowne : Form
         Dodaj(pozycje, "", "Połączenie", new EkranPolaczenie(k));
         Dodaj(pozycje, "", "Podgląd wysyłki", new EkranPodglad(k));
         Dodaj(pozycje, "", "Dziennik", new EkranDziennik(k));
+        // Glif zapisany kodem, a nie znakiem — znaki z obszaru prywatnego fontu ikon latwo zgubic przy edycji.
+        Dodaj(pozycje, "", "Pomoc", new EkranPomoc(k));
 
         _menu.Controls.Add(pozycje);
         _menu.Controls.Add(podLogo);

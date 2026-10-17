@@ -10,9 +10,9 @@ public sealed class EkranStatus : Ekran
 {
     public const string NazwaUslugi = "WU_Connector";
 
-    // NIP w dzienniku jest maskowany (Nip.DoLogu zostawia trzy ostatnie cyfry), ale starsze wiersze maja
-    // go w calosci — wzorzec musi przyjac oba zapisy. Gdy przyjmowal same cyfry, po wprowadzeniu maskowania
-    // tabela „Firmy" przestala widziec nowe cykle i POKAZYWALA STARE, nie zglaszajac tego niczym.
+    // Wzorzec przyjmuje NIP z cyframi i z gwiazdkami. Dzis connector pisze go w calosci, ale w dziennikach
+    // z 17.10.2026 zostaly wiersze z maskowaniem i tabela „Firmy" ma je dalej czytac. Gdy wzorzec przyjmowal
+    // same cyfry, po wlaczeniu maskowania przestal widziec nowe cykle i POKAZYWAL STARE, nie zglaszajac tego.
     static readonly Regex Cykl = new(@"^(\S+ \S+) \w+ (.+?) \(NIP ([\d*]+)\): cykl (\d+) ms, wyslano (\d+), usunieto (\d+), zadan (\d+), wynikow (\d+)");
     static readonly Regex Linia = new(@"^(\S+ \S+) (INFO|UWAG|BLAD|KRYT) (.*)$");
 

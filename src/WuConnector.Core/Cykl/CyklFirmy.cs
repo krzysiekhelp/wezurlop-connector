@@ -84,7 +84,7 @@ public sealed class CyklFirmy
 
     string KluczFirmy => $"{_instalacja.KatalogBin.TrimEnd('\\').ToLowerInvariant()}|{_firma.FirmIde}";
 
-    public string Opis => $"{_instalacja.Nazwa}/firma {_firma.FirmIde}" + (_nip is null ? "" : $" (NIP {Nip.DoLogu(_nip)})");
+    public string Opis => $"{_instalacja.Nazwa}/firma {_firma.FirmIde}" + (_nip is null ? "" : $" (NIP {_nip})");
 
     public async Task<WynikCykluFirmy> WykonajAsync(CancellationToken ct)
     {
@@ -126,7 +126,7 @@ public sealed class CyklFirmy
         // NIP z R2 z bledna suma kontrolna — serwer odrzuci go 422 NIP_NIEPOPRAWNY; lepiej powiedziec to tutaj.
         if (!Nip.CzyPoprawny(nip))
         {
-            _log.LogError("{Firma}: NIP {Nip} w programie kadrowym ma błędną sumę kontrolną — popraw go w kartotece firmy", Opis, Nip.DoLogu(nip));
+            _log.LogError("{Firma}: NIP {Nip} w programie kadrowym ma błędną sumę kontrolną — popraw go w kartotece firmy", Opis, nip);
             return Koniec(WynikFirmy.ZatrzymanaFirma, null, nip, uwagi.Append("NIP niepoprawny").ToList());
         }
 
@@ -517,7 +517,7 @@ public sealed class CyklFirmy
             }
         }
         else if (e.Status == 422 && e.Kod == "NIP_NIEPOPRAWNY")
-            _log.LogError("{Firma}: serwer uznał NIP {Nip} za niepoprawny", Opis, Nip.DoLogu(_nip));
+            _log.LogError("{Firma}: serwer uznał NIP {Nip} za niepoprawny", Opis, _nip);
         // Dwa rozne NIP-y w jednym zadaniu: naglowek X-Nip i parametr ?nip=. Connector parametru nie wysyla,
         // wiec doklada go cos po drodze (proxy, brama) albo w sieci stoi starsza wersja connectora.
         // Blad konfiguracji, nie przejsciowy — ponawianie nic nie da.

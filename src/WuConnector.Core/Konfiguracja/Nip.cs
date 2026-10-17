@@ -15,24 +15,11 @@ public static class Nip
         return s.StartsWith("PL", StringComparison.OrdinalIgnoreCase) ? s[2..] : s;
     }
 
-    /// <summary>
-    /// NIP do dziennika — nigdy w pelnej postaci (zasada z 17.10.2026: dane klienta nie zostaja w logach).
-    /// Zostawia trzy ostatnie cyfry: tyle wystarcza, zeby odroznic firmy w dzienniku.
-    ///
-    /// ⚠ To NIE jest anonimizacja i tak tego nie nazywamy. Ukrytych jest siedem cyfr, a suma kontrolna
-    /// wiaze je z ostatnia, wiec kandydatow zostaje rzedu 10^6 — duzo, ale skonczenie, a NIP-y nie sa
-    /// rozlozone rownomiernie i stoja w publicznych rejestrach. Cel jest wezszy i taki wystarcza:
-    /// dziennik nie ma byc lista NIP-ow gotowa do skopiowania. Numeru, ktory ma naprawde nie wyjsc,
-    /// do dziennika nie wpisujemy wcale.
-    ///
-    /// Dla pustego NIP-u zwraca „?”, zeby komunikat dalej sie skladal.
-    /// </summary>
-    public static string DoLogu(string? nip)
-    {
-        if (string.IsNullOrWhiteSpace(nip)) return "?";
-        var n = Normalizuj(nip);
-        return n.Length <= 3 ? new string('*', n.Length) : new string('*', n.Length - 3) + n[^3..];
-    }
+    // NIP idzie do dziennika connectora w pelnej postaci — decyzja uzytkownika z 17.10.2026, koryguje
+    // wczesniejsze maskowanie. Uzasadnienie: dziennik lezy na serwerze klienta, a kto ma dostep do
+    // connectora, ma i tak dostep do danych kadrowych; skracanie numeru utrudnialo diagnoze, nie dajac
+    // w zamian ochrony. Co innego ADRES zadania do tenanta: tam NIP-u nie ma i byc nie moze, bo trafialby
+    // do logu dostepu serwera WWW — stad naglowek X-Nip zamiast parametru (patrz KlientTenanta).
 
     public static bool CzyPoprawny(string nip)
     {

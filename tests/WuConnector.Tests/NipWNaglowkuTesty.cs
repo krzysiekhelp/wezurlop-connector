@@ -127,18 +127,19 @@ public class NipWNaglowkuTesty
         }
     }
 
+    /// <summary>
+    /// NIP w dzienniku connectora jest pelny (decyzja uzytkownika 17.10.2026) — ale w ADRESIE zadania
+    /// do tenanta go nie ma i to jest osobna sprawa, ktorej ta zmiana nie dotyka. Ten test pilnuje
+    /// granicy miedzy jednym a drugim, zeby nie zlaly sie w jedno przy nastepnej zmianie.
+    /// </summary>
     [Fact]
-    public void NIP_w_dzienniku_jest_skrocony_do_trzech_ostatnich_cyfr()
+    public async Task NIP_pelny_w_dzienniku_ale_nigdy_w_adresie()
     {
-        // Trzy cyfry wystarczaja, zeby odroznic firmy w dzienniku. To nie anonimizacja — patrz Nip.DoLogu;
-        // test pilnuje tylko tego, ze pelny numer nie przechodzi do dziennika.
-        Assert.Equal("*******009", Nip.DoLogu(NipTestowy));
-        Assert.Equal("*******009", Nip.DoLogu("123-456-70-09"));   // normalizacja przed maskowaniem
-        Assert.Equal("*******009", Nip.DoLogu("PL1234567009"));
-        Assert.Equal("?", Nip.DoLogu(null));
-        Assert.Equal("?", Nip.DoLogu("   "));
+        var (k, p) = Klient();
+        using (k) await k.ZadaniaAsync(NipTestowy, "przebieg-7", 20);
 
-        // najwazniejsze: pelny numer nie zostaje nigdzie w wyniku
-        Assert.DoesNotContain(NipTestowy, Nip.DoLogu(NipTestowy));
+        var z = Assert.Single(p.Zadania);
+        Assert.Equal(NipTestowy, Assert.Single(z.Headers.GetValues("X-Nip")));   // pelny w naglowku
+        Assert.DoesNotContain("nip", z.RequestUri!.Query, StringComparison.OrdinalIgnoreCase);   // zadnego w adresie
     }
 }
