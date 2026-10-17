@@ -42,7 +42,7 @@ Pierwsza prawdziwa instalacja z MSI jest wykonana — ręczna rejestracja usług
 
 - Usługa **`WU_Connector`**, stan `RUNNING`, obraz `C:\Program Files\WU_Connector\WuConnector.Service.exe`, auto-start, LocalSystem. **(sprawdzone)**
 - Autostart okna: `HKLM\Software\Microsoft\Windows\CurrentVersion\Run\WU_Connector` = `"C:\Program Files\WU_Connector\WuConnector.Okno.exe" --zasobnik`. **(sprawdzone)**
-- **Zainstalowana paczka: `0.1.4`** (17.10.2026 18:05, aktualizacja przez MSI z 0.1.3). Usługa `WU_Connector` chodzi, `Core.dll` SHA-256 `59D595ECFAB9E6E4…`. **(sprawdzone)** Ścieżka aktualizacji przetestowana na żywo — patrz 3.8.
+- **Zainstalowana paczka: `0.1.5`** (17.10.2026 18:21, aktualizacja MSI z 0.1.4). Usługa chodzi, `Core.dll` SHA-256 `C6EF9B1FF2288AC7…`. **(sprawdzone)** Ścieżka aktualizacji przetestowana na żywo trzy razy — patrz 3.8.
 - Katalog `worker\` na miejscu (proces roboczy net48 x86 obok okna i obok usługi).
 - Po starcie usługa przeszła cykl obu firm (850 ms i 233 ms), `tenant.wezurlop.pl` odpowiada.
 - Użytkownik bez uprawnień **czyta** konfigurację i dziennik; zapis podnosi uprawnienia.
