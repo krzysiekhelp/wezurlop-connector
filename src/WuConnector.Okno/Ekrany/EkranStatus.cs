@@ -41,8 +41,9 @@ public sealed class EkranStatus : Ekran
     const int WysokoscWiersza = 56;
     readonly FlowLayoutPanel _listaZdarzen = new() { FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = Color.White, AutoSize = true };
     int _gornaKrawedzZdarzen;
-    // „" (Accept) z fontu ikon — ten sam zestaw, z ktorego sa glify w menu.
-    readonly Przycisk _przejrzane = new() { Text = "Oznacz jako przejrzane", Glif = "", Rodzaj = RodzajPrzycisku.Drugi, Width = 236 };
+    // „" (Clear) z fontu ikon — ten sam zestaw, z ktorego sa glify w menu. Celowo nie kosz na smieci:
+    // przycisk czysci WIDOK, a wpisy zostaja w dzienniku uslugi.
+    readonly Przycisk _przejrzane = new() { Text = "Wyczyść", Glif = "", Rodzaj = RodzajPrzycisku.Drugi, Width = 140 };
 
     /// <summary>
     /// Do kiedy ostrzezenia sa „przejrzane". Plik w profilu uzytkownika, nie w konfiguracji connectora:
