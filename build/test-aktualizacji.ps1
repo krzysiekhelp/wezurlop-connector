@@ -117,6 +117,14 @@ Oczekiwane:
   znacznik w ProgramData zyje = True       <- aktualizacja nie czysci danych
   konfiguracja nietknieta    = True        <- sekrety i ustawienia klienta zostaja
   wpisow w Programach        = 1           <- MajorUpgrade zastapil, nie dolozyl
-  usluga                     = Running
-Po tescie usluga chodzi w wersji N+1; zadnej dodatkowej akcji nie trzeba.
+  usluga                     = Stopped     <- TAK MA BYC, patrz nizej
+
+UWAGA: instalator NIE uruchamia uslugi. ServiceControl ma Stop="both" i Remove="uninstall",
+ale nie ma Start, a Start="auto" w ServiceInstall ustawia tylko TYP startu (automatyczny przy
+rozruchu), nie startuje jej teraz. Po aktualizacji usluga zostaje zatrzymana do czasu, gdy ktos
+ja uruchomi albo maszyna sie zrestartuje. Po tescie trzeba wiec wykonac:
+
+    Start-Service WU_Connector
+
+Start uslugi wywoluje cykl od razu, bez czekania na harmonogram.
 '@

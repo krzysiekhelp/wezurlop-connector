@@ -42,7 +42,7 @@ Pierwsza prawdziwa instalacja z MSI jest wykonana — ręczna rejestracja usług
 
 - Usługa **`WU_Connector`**, stan `RUNNING`, obraz `C:\Program Files\WU_Connector\WuConnector.Service.exe`, auto-start, LocalSystem. **(sprawdzone)**
 - Autostart okna: `HKLM\Software\Microsoft\Windows\CurrentVersion\Run\WU_Connector` = `"C:\Program Files\WU_Connector\WuConnector.Okno.exe" --zasobnik`. **(sprawdzone)**
-- Paczka zainstalowana 16.10.2026 22:38: `WU_Connector-0.1.0.msi`, 44 253 178 B. **(sprawdzone)** Od 17.10 numer paczki podbija licznik (3.1), więc kolejne paczki to `0.1.N`.
+- **Zainstalowana paczka: `0.1.4`** (17.10.2026 18:05, aktualizacja przez MSI z 0.1.3). Usługa `WU_Connector` chodzi, `Core.dll` SHA-256 `59D595ECFAB9E6E4…`. **(sprawdzone)** Ścieżka aktualizacji przetestowana na żywo — patrz 3.8.
 - Katalog `worker\` na miejscu (proces roboczy net48 x86 obok okna i obok usługi).
 - Po starcie usługa przeszła cykl obu firm (850 ms i 233 ms), `tenant.wezurlop.pl` odpowiada.
 - Użytkownik bez uprawnień **czyta** konfigurację i dziennik; zapis podnosi uprawnienia.
@@ -133,6 +133,42 @@ go nie ubije („Odmowa dostępu”) — trzeba je zamknąć ręcznie. **(sprawd
 Uwaga: błąd kopiowania wypada **przed** kompilacją, więc **maskuje błędy kompilacji** — po takim
 niepowodzeniu nie wolno zakładać, że kod się kompiluje.
 
+### 3.8 Instalator NIE uruchamia usługi — po aktualizacji connector stoi (wymaga decyzji)
+
+**Wyszło przy pierwszym teście ścieżki aktualizacji, 17.10.2026. (sprawdzone na żywo, dwa razy.)**
+
+W `Package.wxs` `ServiceControl` ma `Stop="both"` i `Remove="uninstall"`, ale **nie ma `Start`**.
+`Start="auto"` w `ServiceInstall` ustawia tylko **typ** startu (automatyczny przy rozruchu), a nie
+startuje usługi w trakcie instalacji. Skutek: **po każdej aktualizacji MSI usługa zostaje zatrzymana**,
+dopóki ktoś jej nie uruchomi albo maszyna się nie zrestartuje.
+
+Na pierwszej instalacji to było zamierzone i słuszne — nie ma jeszcze konfiguracji, więc usługę startuje
+okno po jej zapisaniu. **Przy aktualizacji jest inaczej:** konfiguracja już jest, a mimo to synchronizacja
+cicho staje. U klienta oznacza to przestój do najbliższego restartu serwera, bez żadnego komunikatu.
+
+Po aktualizacji trzeba wykonać:
+
+```
+Start-Service WU_Connector
+```
+
+Start usługi wywołuje cykl od razu, bez czekania na harmonogram.
+
+**Do decyzji (zgłoszone 17.10.2026, nie zmieniam sam, bo to zmiana zachowania instalatora u klienta):**
+dołożyć `Start="install"` do `ServiceControl`, tak żeby **aktualizacja** wznawiała usługę, a pierwsza
+instalacja zachowywała się jak dotąd. Warunek `NOT Installed` albo `WIX_UPGRADE_DETECTED` rozróżnia
+te dwa przypadki.
+
+### 3.9 Jak potwierdzić, że connector wysyła NIP nagłówkiem
+
+Oprócz licznika `sync_run.stats.nipWAdresie` u tenanta (zasada w sekcji 6) jest szybszy test lokalny,
+niewymagający dostępu do logów serwera: `GET /sync/stan` **z** nagłówkiem `X-Nip` musi zwrócić
+`firma` **różne od `null`**. Bez nagłówka tenant zwraca sam stan klucza i `firma: null`, więc gdyby
+nagłówek wyciął pośrednik po drodze, odpowiedź byłaby nieodróżnialna od żądania bez NIP-u.
+
+Potwierdzone 17.10.2026 po wdrożeniu 0.1.4: bez nagłówka `firma=null`, z nagłówkiem `firma=ok`
+dla obu firm. Pomysł testu: sesja tenanta (Agent C).
+
 ## 4. Okno konfiguracji — stan po przebudowie
 
 ### Zakładka „R2 Płatnik” (dawniej „Instalacje i firmy”)
@@ -194,7 +230,7 @@ wymaga: okno przekazuje podniesionemu procesowi sekcję konfiguracji (`ZmianaSek
 Kolejność wedle wagi, nie chronologii. **Żadne z tych zadań nie jest rozpoczęte.**
 
 1. ~~Unikalny numer każdej paczki~~ — **zrobione 17.10.2026**, patrz 3.1: licznik w `build\wersja.txt` podbijany przez `publikuj.ps1`, jedno źródło dla trzech projektów, MSI i protokołu.
-2. **Test ścieżki aktualizacji:** instalacja N, potem N+1 — czy pliki się podmieniają, czy konfiguracja i sekrety w `ProgramData` zostają, czy nie robią się dwa wpisy w „Programach i funkcjach”. Dotąd przetestowana jest **wyłącznie pierwsza instalacja.**
+2. ~~Test ścieżki aktualizacji~~ — **zrobione 17.10.2026**, dwa razy na żywo (0.1.2 → 0.1.3 → 0.1.4). Patrz 3.8: binaria się podmieniają, żadnego „Won't Overwrite", konfiguracja i sekrety w `ProgramData` nietknięte, jeden wpis w „Programach i funkcjach". **Ale wyszło przy tym, że instalator nie uruchamia usługi — patrz 3.8, wymaga decyzji.**
 3. **Wymiana deweloperskiego klucza manifestu** (22.23) — blokujące dla wdrożenia.
 4. **Certyfikat code signing** dla EXE i MSI — patrz 3.3; domyka też punkt 3.
 5. **Grupa minimalna uprawnień konta R2** (22.16): konto techniczne connectora siedzi wciąż w grupie „Kadry — wprowadzanie”. Po utworzeniu grupy: przepięcie konta i testy zapisu / edycji / usunięcia cudzego wpisu (`F6A`/`F8A`) / braku uprawnień. R2 pozwala grupę wyeksportować i zaimportować → robimy raz i powielamy u klientów.
