@@ -93,6 +93,40 @@ public class NipWNaglowkuTesty
             Assert.DoesNotContain("nip", z.RequestUri!.Query, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Zachowanie connectora kontra schemat tenanta. Kopia `openapi-sync-v1.json` bywa nieaktualna
+    /// (jest aktualizowana recznie, mailem), wiec ten test jest ostrzezeniem: jesli ktos podmieni ja na
+    /// starsza, nie przeoczymy tego, bo caly sens zmiany — naglowek `X-Nip` — zniknie ze schematu.
+    /// </summary>
+    [Fact]
+    public void Schemat_tenanta_zna_naglowek_X_Nip_i_kod_NIP_NIESPOJNY()
+    {
+        string plik = Path.Combine(AppContext.BaseDirectory, "Kontrakt", "openapi-sync-v1.json");
+        using var dok = System.Text.Json.JsonDocument.Parse(File.ReadAllText(plik));
+        var korzen = dok.RootElement;
+
+        // Naglowek jest zdefiniowany raz, jako wspolny parametr.
+        var naglowek = korzen.GetProperty("components").GetProperty("parameters").GetProperty("NipHeader");
+        Assert.Equal("X-Nip", naglowek.GetProperty("name").GetString());
+        Assert.Equal("header", naglowek.GetProperty("in").GetString());
+
+        foreach (string sciezka in new[] { "/api/v1/sync/stan", "/api/v1/sync/zadania" })
+        {
+            var parametry = korzen.GetProperty("paths").GetProperty(sciezka).GetProperty("get").GetProperty("parameters");
+
+            Assert.Contains(parametry.EnumerateArray(),
+                p => p.TryGetProperty("$ref", out var r) && r.GetString() == "#/components/parameters/NipHeader");
+
+            // `?nip=` jeszcze dziala (okres przejsciowy po stronie tenanta), ale jest oznaczony jako wycofywany.
+            var wAdresie = parametry.EnumerateArray().Single(p => p.TryGetProperty("name", out var n) && n.GetString() == "nip");
+            Assert.True(wAdresie.GetProperty("deprecated").GetBoolean());
+
+            // Dwa rozne NIP-y w jednym zadaniu to 400 — connector traktuje ten kod jako blad konfiguracji.
+            Assert.True(korzen.GetProperty("paths").GetProperty(sciezka).GetProperty("get")
+                              .GetProperty("responses").TryGetProperty("400", out _));
+        }
+    }
+
     [Fact]
     public void NIP_w_dzienniku_jest_skrocony_do_trzech_ostatnich_cyfr()
     {
