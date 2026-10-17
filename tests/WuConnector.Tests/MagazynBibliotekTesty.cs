@@ -49,8 +49,12 @@ public class ManifestTesty
 /// <summary>Testy na prawdziwych bibliotekach R2 z tej maszyny — pomijane, gdy ich nie ma.</summary>
 public sealed class MagazynBibliotekTesty : IAsyncLifetime
 {
-    const string Nowa = @"C:\Symfonia\NowyR2Platnik.10_alfa\BIN\R2PApi10.dll";    // 10.1.0.33
-    const string Stara = @"C:\Symfonia\R2Platnik.10x_alfa_old\BIN\R2PApi10.dll";  // 10.1.0.32
+    // Sciezki do prawdziwych bibliotek R2 sa dana konkretnej instalacji, wiec nie ma ich w repozytorium.
+    // Podaje sie je recznie:
+    //   set WU_TEST_DLL_NOWA=<...>\BIN\R2PApi10.dll    (wersja pliku 10.1.0.33)
+    //   set WU_TEST_DLL_STARA=<...>\BIN\R2PApi10.dll   (wersja pliku 10.1.0.32)
+    static string? Nowa => Environment.GetEnvironmentVariable("WU_TEST_DLL_NOWA");
+    static string? Stara => Environment.GetEnvironmentVariable("WU_TEST_DLL_STARA");
 
     readonly string _tmp = Path.Combine(Path.GetTempPath(), "wu-biblioteki-" + Guid.NewGuid().ToString("N"));
     string Serwer => Path.Combine(_tmp, "serwer");
@@ -60,7 +64,27 @@ public sealed class MagazynBibliotekTesty : IAsyncLifetime
     WebApplication _app = null!;
     Uri _manifest = null!;
 
-    static bool Sa => File.Exists(Nowa) && File.Exists(Stara);
+    /// <summary>
+    /// Czy mamy czym testowac. Gdy zmienne nie sa ustawione wcale (CI, obca maszyna) — testy sa pomijane.
+    /// Gdy SA ustawione, ale plikow nie ma — test PADA, zamiast cicho przejsc.
+    ///
+    /// Powod tej asymetrii: wczesniej sciezki byly wpisane na sztywno, a podmiana nazw katalogow przy
+    /// czyszczeniu danych klienta (17.10.2026) przestawila je na katalogi, ktorych nie ma. Osiem testow
+    /// tej klasy przez kilka godzin nie sprawdzalo NICZEGO, przechodzac na zielono — czyli dokladnie
+    /// najgorszy mozliwy tryb awarii testu. Wiecej taka pomylka ma byc glosna.
+    /// </summary>
+    static bool Sa
+    {
+        get
+        {
+            if (Nowa is null && Stara is null) return false;
+            Assert.True(Nowa is not null && Stara is not null,
+                "Ustaw obie zmienne albo zadnej: WU_TEST_DLL_NOWA i WU_TEST_DLL_STARA");
+            Assert.True(File.Exists(Nowa), $"WU_TEST_DLL_NOWA wskazuje nieistniejacy plik: {Nowa}");
+            Assert.True(File.Exists(Stara), $"WU_TEST_DLL_STARA wskazuje nieistniejacy plik: {Stara}");
+            return true;
+        }
+    }
 
     public async Task InitializeAsync()
     {
@@ -89,7 +113,7 @@ public sealed class MagazynBibliotekTesty : IAsyncLifetime
     void Wystaw(DateTimeOffset? wydano = null, string? zmienSha = null, bool zlyPodpis = false)
     {
         string plik = Path.Combine(Serwer, "10.1.0.33", "R2PApi10.dll");
-        if (!File.Exists(plik)) File.Copy(Nowa, plik);
+        if (!File.Exists(plik)) File.Copy(Nowa!, plik);
         string sha;
         using (var s = File.OpenRead(plik)) sha = Convert.ToHexString(SHA256.HashData(s));
         var m = new ManifestBibliotek(1, wydano ?? DateTimeOffset.Now,
@@ -106,14 +130,14 @@ public sealed class MagazynBibliotekTesty : IAsyncLifetime
     public void Podpis_producenta_prawdziwej_biblioteki_i_odrzucenie_zmienionej()
     {
         if (!Sa) return;
-        var p = PodpisProducenta.Sprawdz(Nowa);
+        var p = PodpisProducenta.Sprawdz(Nowa!);
         Assert.True(p.Poprawny, p.Blad);
         Assert.Contains("SERIALNUMBER=0000228956", p.Podmiot);
 
         // Jeden zmieniony bajt w srodku pliku — podpis musi przestac sie zgadzac.
         string kopia = Path.Combine(_tmp, "zmieniona.dll");
         Directory.CreateDirectory(_tmp);
-        File.Copy(Nowa, kopia);
+        File.Copy(Nowa!, kopia);
         using (var f = File.Open(kopia, FileMode.Open)) { f.Position = 5_000_000; int b = f.ReadByte(); f.Position = 5_000_000; f.WriteByte((byte)(b ^ 0xFF)); }
         Assert.False(PodpisProducenta.Sprawdz(kopia).Poprawny);
 
@@ -132,7 +156,7 @@ public sealed class MagazynBibliotekTesty : IAsyncLifetime
     public async Task Pasujacy_BIN_bez_pobierania()
     {
         if (!Sa) return;
-        File.Copy(Nowa, Path.Combine(Bin, "R2PApi10.dll"));
+        File.Copy(Nowa!, Path.Combine(Bin, "R2PApi10.dll"));
         var w = await Utworz().WybierzAsync(Bin, null, "10.10.33", default);
         Assert.Equal("BIN", w.Zrodlo);
         Assert.False(Directory.Exists(Magazyn));
@@ -142,7 +166,7 @@ public sealed class MagazynBibliotekTesty : IAsyncLifetime
     public async Task Niezgodny_BIN_pobiera_z_weryfikacja_a_potem_bierze_z_magazynu()
     {
         if (!Sa) return;
-        File.Copy(Stara, Path.Combine(Bin, "R2PApi10.dll"));   // serwer z R2 nieaktualizowany, stacje juz na .33
+        File.Copy(Stara!, Path.Combine(Bin, "R2PApi10.dll"));   // serwer z R2 nieaktualizowany, stacje juz na .33
         Wystaw();
 
         var w1 = await Utworz().WybierzAsync(Bin, null, "10.10.33", default);
@@ -158,7 +182,7 @@ public sealed class MagazynBibliotekTesty : IAsyncLifetime
     public async Task Podrobiony_manifest_odrzucony_zostaje_BIN_z_ostrzezeniem()
     {
         if (!Sa) return;
-        File.Copy(Stara, Path.Combine(Bin, "R2PApi10.dll"));
+        File.Copy(Stara!, Path.Combine(Bin, "R2PApi10.dll"));
         Wystaw(zlyPodpis: true);
         var w = await Utworz().WybierzAsync(Bin, null, "10.10.33", default);
         Assert.Equal("BIN (niezgodna wersja)", w.Zrodlo);
@@ -174,6 +198,30 @@ public sealed class MagazynBibliotekTesty : IAsyncLifetime
         var w = await Utworz().WybierzAsync(Bin, null, "10.10.33", default);   // w BIN nic — brak biblioteki
         Assert.Equal("brak", w.Zrodlo);
         Assert.Contains("SHA-256", w.Uwaga);
+        Assert.False(Directory.Exists(Path.Combine(Magazyn, "10.1.0.33")));
+    }
+
+    /// <summary>
+    /// Manifest podpisany POPRAWNIE, ale obcym kluczem — przez prawdziwa sciezke magazynu, z wbudowanym
+    /// kluczem produkcyjnym (<see cref="KluczManifestu.Publiczny"/>) zamiast klucza testu.
+    ///
+    /// To jest rzeczywisty atak: ktos stawia wlasny serwer bibliotek i podpisuje manifest swoim kluczem.
+    /// Test `Podrobiony_manifest_odrzucony…` go NIE pokrywa, bo tam podpisem jest 64 bajty zer — podpis
+    /// niepoprawny strukturalnie, odrzucany na innym etapie niz podpis dobrze zbudowany, lecz nie nasz.
+    /// </summary>
+    [Fact]
+    public async Task Manifest_podpisany_obcym_kluczem_odrzucony_choc_podpis_poprawny()
+    {
+        if (!Sa) return;
+        File.Copy(Stara!, Path.Combine(Bin, "R2PApi10.dll"));
+        Wystaw();   // podpisany kluczem testu — dla magazynu z kluczem produkcyjnym jest to klucz obcy
+
+        var zProdukcyjnym = new MagazynBibliotek(Magazyn, _manifest, NullLogger.Instance, KluczManifestu.Publiczny);
+        var w = await zProdukcyjnym.WybierzAsync(Bin, null, "10.10.33", default);
+
+        Assert.Equal("BIN (niezgodna wersja)", w.Zrodlo);
+        Assert.Contains("nieprawidlowy podpis", w.Uwaga);
+        // Najwazniejsze: nic nie wyladowalo w magazynie, wiec podmieniona biblioteka nie zostanie uzyta.
         Assert.False(Directory.Exists(Path.Combine(Magazyn, "10.1.0.33")));
     }
 

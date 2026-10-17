@@ -144,7 +144,16 @@ dopóki ktoś jej nie uruchomi albo maszyna się nie zrestartuje.
 
 Na pierwszej instalacji to było zamierzone i słuszne — nie ma jeszcze konfiguracji, więc usługę startuje
 okno po jej zapisaniu. **Przy aktualizacji jest inaczej:** konfiguracja już jest, a mimo to synchronizacja
-cicho staje. U klienta oznacza to przestój do najbliższego restartu serwera, bez żadnego komunikatu.
+staje. U klienta oznacza to przestój do najbliższego restartu serwera.
+
+**Jak długo taki przestój jest niewidoczny** (ustalone z sesją tenanta 17.10.2026, koryguje wcześniejsze
+„bez żadnego komunikatu"): tenant **alarmuje**, ale z opóźnieniem. Próg `key_idle_alert_hours`, domyślnie
+**24 h**, liczony od ostatniego żądania tym kluczem; po przekroczeniu idzie wpis `integration.key_idle`
+do dziennika zdarzeń **i** wiadomość na skrzynkę alertową, jedna na epizod. Nasz przypadek — usługa, która
+po aktualizacji nie wstaje — zostaje złapany, bo klucz milknie w całości. Czyli nie jest to cicha awaria,
+tylko opóźniona o próg. Czego ten mechanizm **nie** łapie: awarii jednej firmy, gdy jeden klucz obsługuje
+dwie (druga się synchronizuje, znacznik świeży, alertu nie ma) — a u tego klienta to jest realna
+konfiguracja: jeden klucz, dwie firmy.
 
 Po aktualizacji trzeba wykonać:
 
