@@ -41,8 +41,8 @@ public sealed class EkranStatus : Ekran
     const int WysokoscWiersza = 56;
     readonly FlowLayoutPanel _listaZdarzen = new() { FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = Color.White, AutoSize = true };
     int _gornaKrawedzZdarzen;
-    readonly Przycisk _przejrzane = new() { Text = "Oznacz jako przejrzane", Rodzaj = RodzajPrzycisku.Drugi, Width = 210 };
-    readonly Przycisk _pokazWszystkie = new() { Text = "Pokaż wcześniejsze", Rodzaj = RodzajPrzycisku.Tekstowy, Width = 180, Visible = false };
+    // „" (Accept) z fontu ikon — ten sam zestaw, z ktorego sa glify w menu.
+    readonly Przycisk _przejrzane = new() { Text = "Oznacz jako przejrzane", Glif = "", Rodzaj = RodzajPrzycisku.Drugi, Width = 236 };
 
     /// <summary>
     /// Do kiedy ostrzezenia sa „przejrzane". Plik w profilu uzytkownika, nie w konfiguracji connectora:
@@ -125,10 +125,7 @@ public sealed class EkranStatus : Ekran
         _przejrzane.Location = new Point(_zdarzenia.Width - Uklad.Margines - _przejrzane.Width, 20);
         _przejrzane.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         _przejrzane.Click += async (_, _) => { ZapiszPrzejrzane(DateTime.Now); await PokazAsync(); };
-        _pokazWszystkie.Location = new Point(_zdarzenia.Width - Uklad.Margines - _przejrzane.Width - _pokazWszystkie.Width - 8, 20);
-        _pokazWszystkie.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _pokazWszystkie.Click += async (_, _) => { ZapiszPrzejrzane(null); await PokazAsync(); };
-        _zdarzenia.Controls.AddRange(new Control[] { _przejrzane, _pokazWszystkie });
+        _zdarzenia.Controls.Add(_przejrzane);
 
         _listaZdarzen.Location = new Point(Uklad.Margines, _gornaKrawedzZdarzen);
         _listaZdarzen.Width = Uklad.SzerokoscTresci - 2 * Uklad.Margines;
@@ -187,14 +184,12 @@ public sealed class EkranStatus : Ekran
         var nowe = przejrzaneDo is null ? wszystkie : wszystkie.Where(m => CzasLinii(m) > przejrzaneDo.Value).ToList();
         int ukryte = wszystkie.Count - nowe.Count;
 
-        Uklad.Pokaz(_pokazWszystkie, ukryte > 0);
-        _pokazWszystkie.Text = ukryte == 1 ? "Pokaż 1 wcześniejsze" : $"Pokaż {ukryte} wcześniejszych";
         _przejrzane.Enabled = nowe.Count > 0;
 
         var zd = nowe.TakeLast(8).Reverse().ToList();
         if (zd.Count == 0)
             _listaZdarzen.Controls.Add(E.Opis(ukryte > 0
-                ? $"Brak nowych ostrzeżeń od oznaczenia {przejrzaneDo:dd.MM HH:mm}. Wcześniejsze ({ukryte}) zostały w dzienniku usługi."
+                ? $"Brak nowych ostrzeżeń od {przejrzaneDo:dd.MM HH:mm}. Wcześniejsze ({ukryte}) znajdziesz w zakładce Dziennik."
                 : "Brak ostrzeżeń — wszystko w porządku."));
         foreach (var m in zd)
         {

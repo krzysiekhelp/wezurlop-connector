@@ -60,6 +60,17 @@ public sealed class OknoGlowne : Form
     readonly Label _tytul = E.Tytul("");
     readonly Label _podtytul = E.Podtytul("");
     readonly Panel _host = new() { Dock = DockStyle.Fill, BackColor = Styl.Tlo };
+
+    // Zaslona „wczytuję” nad obszarem tresci. Wejscie na ekran potrafi chwile potrwac (R2 Platnik pyta
+    // o wersje instalacji i baz), a bez tego okno wygladalo na zawieszone. Praca ekranow jest naprawde
+    // asynchroniczna, wiec watek interfejsu jest w tym czasie wolny i kolowrotek sie kreci.
+    // Nie Dock.Fill: dwie kontrolki Fill w jednym rodzicu dziela miedzy siebie miejsce w kolejnosci
+    // ukladania i zaslona potrafi dostac zerowy rozmiar. Ustawiamy jej prostokat wprost na obszar ekranu.
+    readonly Panel _ladowanie = new() { BackColor = Styl.Tlo, Visible = false };
+    readonly Kolowrotek _kolowrotek = new();
+    readonly Label _ladowanieOpis = E.Opis("Wczytuję…");
+    // Zwloka przed pokazaniem: ekran, ktory wchodzi od razu, nie ma mrugac zaslona.
+    readonly System.Windows.Forms.Timer _zwlokaLadowania = new() { Interval = 180 };
     /// <summary>Pasek z wynikiem zapisu wykonanego przy starcie (po podniesieniu uprawnien) — inaczej nikt by go nie zobaczyl.</summary>
     readonly Panel _belka = new() { Dock = DockStyle.Top, Height = 62, BackColor = Styl.Mieta, Padding = new Padding(0, 8, 10, 8), Visible = false };
     readonly Label _komunikat = E.Tekst("");
@@ -128,6 +139,22 @@ public sealed class OknoGlowne : Form
             _belka.Visible = true;
         }
 
+        // Zaslona musi byc nad ekranem, ale pod belka komunikatu — stad kolejnosc dodawania i BringToFront nizej.
+        _ladowanie.Controls.AddRange(new Control[] { _kolowrotek, _ladowanieOpis });
+        _ladowanie.Resize += (_, _) =>
+        {
+            _kolowrotek.Location = new Point((_ladowanie.Width - _kolowrotek.Width) / 2, _ladowanie.Height / 2 - 46);
+            _ladowanieOpis.Location = new Point((_ladowanie.Width - _ladowanieOpis.Width) / 2, _ladowanie.Height / 2 - 6);
+        };
+        _zwlokaLadowania.Tick += (_, _) =>
+        {
+            _zwlokaLadowania.Stop();
+            _ladowanie.Bounds = _host.Bounds;
+            _ladowanie.Visible = true;
+            _ladowanie.BringToFront();
+        };
+        _host.Resize += (_, _) => { if (_ladowanie.Visible) _ladowanie.Bounds = _host.Bounds; };
+        _obszar.Controls.Add(_ladowanie);
         _obszar.Controls.Add(_host);
         _obszar.Controls.Add(_belka);
         _obszar.Controls.Add(naglowek);
@@ -219,7 +246,17 @@ public sealed class OknoGlowne : Form
             _host.Controls.Add(e);
             _biezacy = e;
         }
-        await e.PokazAsync();
+
+        // Zaslona pojawia sie dopiero po 180 ms, wiec szybkie ekrany wchodza bez mrugniecia,
+        // a wolne (R2 Platnik: odpytanie instalacji i baz) od razu mowia, ze cos sie dzieje.
+        _zwlokaLadowania.Stop();
+        _zwlokaLadowania.Start();
+        try { await e.PokazAsync(); }
+        finally
+        {
+            _zwlokaLadowania.Stop();
+            _ladowanie.Visible = false;
+        }
     }
 
     /// <summary>

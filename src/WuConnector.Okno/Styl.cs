@@ -247,10 +247,16 @@ public class Przycisk : Button
         Padding = new Padding(18, 0, 18, 0);
     }
 
+    /// <summary>Ikona przed napisem — znak z fontu ikon (Segoe Fluent Icons), pusty = przycisk bez ikony.</summary>
+    public string Glif { get; set; } = "";
+    const int OdstepGlifu = 10;
+
     public override Size GetPreferredSize(Size proposed)
     {
         var t = TextRenderer.MeasureText(Text, Font);
-        return new Size(t.Width + Padding.Horizontal + 8, Height);
+        int glif = 0;
+        if (Glif.Length > 0) { using var f = Styl.Ikona(Styl.Tresc); glif = TextRenderer.MeasureText(Glif, f).Width + OdstepGlifu; }
+        return new Size(t.Width + glif + Padding.Horizontal + 8, Height);
     }
 
     protected override void OnMouseEnter(EventArgs e) { _nad = true; Invalidate(); base.OnMouseEnter(e); }
@@ -280,7 +286,22 @@ public class Przycisk : Button
             tekst = Enabled ? Styl.Tekst : Styl.Szary;
         }
         else tekst = _nad ? Styl.ZielonyCiemny : Styl.Zielony;
-        TextRenderer.DrawText(g, Text, Font, r, tekst, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+
+        // Bez glifu: sam napis na srodku. Z glifem: glif i napis jako jedna calosc wysrodkowana razem,
+        // zeby przycisk nie wygladal na przesuniety w lewo.
+        if (Glif.Length == 0)
+        {
+            TextRenderer.DrawText(g, Text, Font, r, tekst, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            return;
+        }
+        using var fi = Styl.Ikona(Styl.Tresc);
+        var szerGlifu = TextRenderer.MeasureText(g, Glif, fi).Width;
+        var szerTekstu = TextRenderer.MeasureText(g, Text, Font).Width;
+        int x = (Width - (szerGlifu + OdstepGlifu + szerTekstu)) / 2;
+        TextRenderer.DrawText(g, Glif, fi, new Rectangle(x, 0, szerGlifu, Height), tekst,
+                              TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        TextRenderer.DrawText(g, Text, Font, new Rectangle(x + szerGlifu + OdstepGlifu, 0, szerTekstu + 4, Height), tekst,
+                              TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
     }
 }
 
