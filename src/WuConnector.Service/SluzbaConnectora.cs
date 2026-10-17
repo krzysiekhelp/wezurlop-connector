@@ -27,7 +27,7 @@ public sealed class SluzbaConnectora(KonfiguracjaConnectora konfiguracja, ILogge
                 var w = await connector.WykonajCyklAsync(ct);
                 odstep = w.Nastepny;
                 foreach (var f in w.Firmy.Where(f => f.Uwagi.Count > 0))
-                    foreach (var u in f.Uwagi) log.LogInformation("{Nip}: {Uwaga}", f.Nip ?? "?", u);
+                    foreach (var u in f.Uwagi) log.LogInformation("{Nip}: {Uwaga}", Nip.DoLogu(f.Nip), u);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (Exception ex)

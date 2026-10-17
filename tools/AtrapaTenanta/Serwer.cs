@@ -171,6 +171,26 @@ public static class Serwer
 
     static string? Str(JsonObject? o, string k) => o?[k] is JsonValue v && v.TryGetValue<string>(out var x) ? x : null;
 
+    /// <summary>
+    /// NIP dla operacji GET: naglowek <c>X-Nip</c> (od tury 11) albo — dla starszych connectorow —
+    /// parametr <c>?nip=</c>, ktory jest wycofywany. Gdy sa oba i roznia sie, to blad zadania:
+    /// 400 NIP_NIESPOJNY, zeby nie dalo sie przypadkiem trafic w inna firme niz zamierzona.
+    /// </summary>
+    static Odp? NipGet(HttpContext c, out string? nip)
+    {
+        string? zNaglowka = c.Request.Headers["X-Nip"].FirstOrDefault();
+        string? zAdresu = c.Request.Query["nip"];
+        if (string.IsNullOrEmpty(zNaglowka)) { nip = zAdresu; return null; }
+        if (!string.IsNullOrEmpty(zAdresu)
+            && WuConnector.Core.Konfiguracja.Nip.Normalizuj(zAdresu) != WuConnector.Core.Konfiguracja.Nip.Normalizuj(zNaglowka))
+        {
+            nip = null;
+            return new Odp(400, Blad("NIP_NIESPOJNY", "Naglowek X-Nip i parametr nip podaja rozne numery"));
+        }
+        nip = zNaglowka;
+        return null;
+    }
+
     // ================================================================== operacje
 
     /// <summary>
@@ -179,7 +199,7 @@ public static class Serwer
     /// </summary>
     static Odp Stan(StanAtrapy s, JsonObject? _, HttpContext c)
     {
-        string? nip = c.Request.Query["nip"];
+        if (NipGet(c, out string? nip) is Odp niespojny) return niespojny;
         JsonObject? firma = null;
         string? ostatni = null;
 
@@ -310,7 +330,8 @@ public static class Serwer
     static Odp Zadania(StanAtrapy s, JsonObject? cialo, HttpContext c)
     {
         var q = c.Request.Query;
-        if (Kontekst(s, q["nip"], q["przebiegId"], true, out var f, out _) is Odp blad) return blad;
+        if (NipGet(c, out string? nip) is Odp niespojny) return niespojny;
+        if (Kontekst(s, nip, q["przebiegId"], true, out var f, out _) is Odp blad) return blad;
         int limit = int.TryParse(q["limit"], out var l) ? Math.Clamp(l, 1, 100) : 20;
 
         var teraz = DateTime.UtcNow;

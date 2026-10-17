@@ -15,6 +15,18 @@ public static class Nip
         return s.StartsWith("PL", StringComparison.OrdinalIgnoreCase) ? s[2..] : s;
     }
 
+    /// <summary>
+    /// NIP do dziennika — nigdy w pelnej postaci (zasada z 17.10.2026: dane klienta nie zostaja w logach).
+    /// Zostawia trzy ostatnie cyfry: tyle wystarcza, zeby odroznic firmy w dzienniku, a za malo,
+    /// zeby numer odtworzyc. Dla pustego NIP-u zwraca „?”, zeby komunikat dalej sie skladal.
+    /// </summary>
+    public static string DoLogu(string? nip)
+    {
+        if (string.IsNullOrWhiteSpace(nip)) return "?";
+        var n = Normalizuj(nip);
+        return n.Length <= 3 ? new string('*', n.Length) : new string('*', n.Length - 3) + n[^3..];
+    }
+
     public static bool CzyPoprawny(string nip)
     {
         var n = Normalizuj(nip);

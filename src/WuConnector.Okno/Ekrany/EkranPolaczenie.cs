@@ -287,6 +287,10 @@ public sealed class EkranPolaczenie : Ekran
             var (t, p) = e.Status switch
             {
                 0 => ("Brak połączenia z serwerem", Poziom.Blad),
+                // Connector wysyła NIP wyłącznie nagłówkiem X-Nip. Jeśli serwer widzi do tego parametr
+                // ?nip= z inną wartością, dokłada go coś po drodze — to błąd konfiguracji, nie usterka łącza.
+                400 when e.Kod == "NIP_NIESPOJNY" =>
+                    ("Serwer dostał dwa różne NIP-y w jednym żądaniu — sprawdź pośrednika (proxy) na drodze do serwera", Poziom.Blad),
                 401 => ("Klucz nieprawidłowy albo wygasł", Poziom.Blad),
                 403 => ("Firma nie jest zatwierdzona w wezurlop", Poziom.Uwaga),
                 404 => ("Serwer nie zna operacji „stan” — zaktualizuj aplikację wezurlop", Poziom.Uwaga),

@@ -94,21 +94,35 @@ public sealed class KlientTenanta : IDisposable
 
 
     /// <summary>
+    /// GET z NIP-em firmy w naglowku <c>X-Nip</c>, nigdy w adresie.
+    /// Powod: parametr <c>?nip=</c> zapisywal sie jawnie w logu dostepu serwera tenanta, a log dostepu
+    /// zyje dluzej i oglada go wiecej osob niz baze. Naglowki do niego nie trafiaja.
+    /// `nip` w ciele operacji POST zostaje bez zmian — tam nie ma tego problemu.
+    /// Gdyby w adresie i w naglowku byly dwa rozne NIP-y, tenant odpowiada 400 NIP_NIESPOJNY;
+    /// dlatego connector nie dokleja `?nip=` nawet pomocniczo.
+    /// </summary>
+    static HttpRequestMessage Get(string sciezka, string? nip)
+    {
+        var z = new HttpRequestMessage(HttpMethod.Get, sciezka);
+        if (nip is not null) z.Headers.Add("X-Nip", nip);
+        return z;
+    }
+
+    /// <summary>
     /// GET /sync/stan — stan klucza i firmy bez otwierania przebiegu (test polaczenia).
     /// `nip` opcjonalny: bez niego sprawdzamy sam klucz, jeszcze zanim poznamy NIP firmy.
     /// </summary>
     public async Task<OdpowiedzStanu> StanAsync(string? nip = null, CancellationToken ct = default)
     {
-        string q = "stan" + (nip is null ? "" : $"?nip={Uri.EscapeDataString(nip)}");
-        using var odp = await WyslijAsync(() => new HttpRequestMessage(HttpMethod.Get, q), ct);
+        using var odp = await WyslijAsync(() => Get("stan", nip), ct);
         return await CzytajAsync<OdpowiedzStanu>(odp, ct);
     }
 
     public async Task<List<ZadanieTenanta>> ZadaniaAsync(string nip, string przebiegId, int limit, CancellationToken ct = default)
     {
-        // X-Idempotency-Key tylko przy POST.
-        string q = $"zadania?nip={Uri.EscapeDataString(nip)}&przebiegId={Uri.EscapeDataString(przebiegId)}&limit={limit}";
-        using var odp = await WyslijAsync(() => new HttpRequestMessage(HttpMethod.Get, q), ct);
+        // X-Idempotency-Key tylko przy POST. NIP idzie naglowkiem; w adresie zostaja przebiegId i limit.
+        string q = $"zadania?przebiegId={Uri.EscapeDataString(przebiegId)}&limit={limit}";
+        using var odp = await WyslijAsync(() => Get(q, nip), ct);
         return (await CzytajAsync<OdpowiedzZadania>(odp, ct)).Zadania ?? new();
     }
 
