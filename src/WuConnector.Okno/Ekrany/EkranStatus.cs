@@ -1,6 +1,7 @@
 ﻿using System.Globalization;
 using System.ServiceProcess;
 using System.Text.RegularExpressions;
+using WuConnector.Core.Konfiguracja;
 
 namespace WuConnector.Okno;
 
@@ -9,7 +10,10 @@ public sealed class EkranStatus : Ekran
 {
     public const string NazwaUslugi = "WU_Connector";
 
-    static readonly Regex Cykl = new(@"^(\S+ \S+) \w+ (.+?) \(NIP (\d+)\): cykl (\d+) ms, wyslano (\d+), usunieto (\d+), zadan (\d+), wynikow (\d+)");
+    // NIP w dzienniku jest maskowany (Nip.DoLogu zostawia trzy ostatnie cyfry), ale starsze wiersze maja
+    // go w calosci — wzorzec musi przyjac oba zapisy. Gdy przyjmowal same cyfry, po wprowadzeniu maskowania
+    // tabela „Firmy" przestala widziec nowe cykle i POKAZYWALA STARE, nie zglaszajac tego niczym.
+    static readonly Regex Cykl = new(@"^(\S+ \S+) \w+ (.+?) \(NIP ([\d*]+)\): cykl (\d+) ms, wyslano (\d+), usunieto (\d+), zadan (\d+), wynikow (\d+)");
     static readonly Regex Linia = new(@"^(\S+ \S+) (INFO|UWAG|BLAD|KRYT) (.*)$");
 
     readonly Kontekst _k;
@@ -37,6 +41,43 @@ public sealed class EkranStatus : Ekran
     const int WysokoscWiersza = 56;
     readonly FlowLayoutPanel _listaZdarzen = new() { FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = Color.White, AutoSize = true };
     int _gornaKrawedzZdarzen;
+    readonly Przycisk _przejrzane = new() { Text = "Oznacz jako przejrzane", Rodzaj = RodzajPrzycisku.Drugi, Width = 210 };
+    readonly Przycisk _pokazWszystkie = new() { Text = "Pokaż wcześniejsze", Rodzaj = RodzajPrzycisku.Tekstowy, Width = 180, Visible = false };
+
+    /// <summary>
+    /// Do kiedy ostrzezenia sa „przejrzane". Plik w profilu uzytkownika, nie w konfiguracji connectora:
+    /// to stan okna jednej osoby, a nie ustawienie uslugi — i nie wymaga uprawnien administratora.
+    /// </summary>
+    static string PlikPrzejrzanych => Path.Combine(DziennikOkna.Katalog, "przejrzane-do.txt");
+
+    /// <summary>Czas z wiersza dziennika; wiersz w nieznanym formacie traktujemy jak najstarszy, zeby nie wywrocic ekranu.</summary>
+    static DateTime CzasLinii(Match m)
+        => DateTime.TryParseExact(m.Groups[1].Value, "yyyy-MM-dd HH:mm:ss.fff",
+                                  CultureInfo.InvariantCulture, DateTimeStyles.None, out var t) ? t : DateTime.MinValue;
+
+    static DateTime? Przejrzane()
+    {
+        try
+        {
+            return File.Exists(PlikPrzejrzanych)
+                && DateTime.TryParse(File.ReadAllText(PlikPrzejrzanych).Trim(), CultureInfo.InvariantCulture,
+                                     DateTimeStyles.RoundtripKind, out var t) ? t : null;
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
+    static void ZapiszPrzejrzane(DateTime? doKiedy)
+    {
+        try
+        {
+            Directory.CreateDirectory(DziennikOkna.Katalog);
+            if (doKiedy is null) File.Delete(PlikPrzejrzanych);
+            else File.WriteAllText(PlikPrzejrzanych, doKiedy.Value.ToString("O", CultureInfo.InvariantCulture));
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
 
     public override string Tytul => "Status";
     public override string Podtytul => "Czy connector pracuje i co ostatnio przesłał do wezurlop";
@@ -78,6 +119,17 @@ public sealed class EkranStatus : Ekran
 
         _zdarzenia.Width = Uklad.SzerokoscTresci;
         _gornaKrawedzZdarzen = Uklad.NaglowekKarty(_zdarzenia, "Ostatnie ostrzeżenia i błędy") - Uklad.Duza + Uklad.Srednia;
+
+        // Przyciski w naglowku karty, przy prawej krawedzi. Szerokosc ustawiamy przed pozycja i zakotwiczeniem —
+        // inaczej kontrolka wyladuje poza karta (ta pulapka wracala w tym oknie kilka razy).
+        _przejrzane.Location = new Point(_zdarzenia.Width - Uklad.Margines - _przejrzane.Width, 20);
+        _przejrzane.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _przejrzane.Click += async (_, _) => { ZapiszPrzejrzane(DateTime.Now); await PokazAsync(); };
+        _pokazWszystkie.Location = new Point(_zdarzenia.Width - Uklad.Margines - _przejrzane.Width - _pokazWszystkie.Width - 8, 20);
+        _pokazWszystkie.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _pokazWszystkie.Click += async (_, _) => { ZapiszPrzejrzane(null); await PokazAsync(); };
+        _zdarzenia.Controls.AddRange(new Control[] { _przejrzane, _pokazWszystkie });
+
         _listaZdarzen.Location = new Point(Uklad.Margines, _gornaKrawedzZdarzen);
         _listaZdarzen.Width = Uklad.SzerokoscTresci - 2 * Uklad.Margines;
         _listaZdarzen.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -92,7 +144,9 @@ public sealed class EkranStatus : Ekran
 
         // ---- ostatni cykl kazdej firmy
         var ostatnie = new Dictionary<string, Match>();
-        foreach (var l in linie) { var m = Cykl.Match(l); if (m.Success) ostatnie[m.Groups[3].Value] = m; }
+        // Kluczem jest NAZWA (instalacja/firma), nie NIP: NIP w dzienniku bywa pelny (wiersze sprzed
+        // maskowania) albo zamaskowany, wiec kluczowanie po nim pokazywalo te sama firme dwa razy.
+        foreach (var l in linie) { var m = Cykl.Match(l); if (m.Success) ostatnie[m.Groups[2].Value] = m; }
 
         _wiersze.Controls.Clear();
         _poziomy.Clear();
@@ -108,7 +162,12 @@ public sealed class EkranStatus : Ekran
         {
             var czas = DateTime.ParseExact(m.Groups[1].Value, "yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
             var wiek = DateTime.Now - czas;
-            var poziom = wiek < TimeSpan.FromMinutes(5) ? Poziom.Ok : wiek < TimeSpan.FromHours(1) ? Poziom.Uwaga : Poziom.Blad;
+            // Spoznienie mierzymy WZGLEDEM HARMONOGRAMU, nie stala 5 minut. Przy domyslnym ustawieniu
+            // „poza godzinami pracy co 60 min" kazdy cykl starszy niz 5 minut wygladal na usterke
+            // i okno pokazywalo „Connector wymaga uwagi" przez wiekszosc doby, bez powodu.
+            var odstep = (_k.Plik?.Harmonogram ?? Harmonogram.Domyslny()).Odstep(DateTime.Now);
+            var tolerancja = odstep + TimeSpan.FromMinutes(2);   // zapas na czas trwania cyklu
+            var poziom = wiek <= tolerancja ? Poziom.Ok : wiek <= tolerancja * 3 ? Poziom.Uwaga : Poziom.Blad;
             _poziomy.Add(poziom);
             var w = WierszFirmy(m, czas, poziom, yw > 0);
             w.Location = new Point(0, yw);
@@ -119,9 +178,24 @@ public sealed class EkranStatus : Ekran
         _kartaFirm.Height = _wiersze.Top + yw + Uklad.Srednia;
 
         // ---- zdarzenia
+        // „Oznacz jako przejrzane" zapisuje chwile w profilu uzytkownika; starsze zdarzenia znikaja z listy,
+        // ale ZOSTAJA w dzienniku uslugi — to ukrycie w oknie, nie czyszczenie sladu. Dlatego da sie je
+        // z powrotem pokazac („Pokaż wcześniejsze”), zeby znacznik nie byl drzwiami w jedna strone.
         _listaZdarzen.Controls.Clear();
-        var zd = linie.Select(l => Linia.Match(l)).Where(m => m.Success && m.Groups[2].Value != "INFO").TakeLast(8).Reverse().ToList();
-        if (zd.Count == 0) _listaZdarzen.Controls.Add(E.Opis("Brak ostrzeżeń — wszystko w porządku."));
+        var przejrzaneDo = Przejrzane();
+        var wszystkie = linie.Select(l => Linia.Match(l)).Where(m => m.Success && m.Groups[2].Value != "INFO").ToList();
+        var nowe = przejrzaneDo is null ? wszystkie : wszystkie.Where(m => CzasLinii(m) > przejrzaneDo.Value).ToList();
+        int ukryte = wszystkie.Count - nowe.Count;
+
+        Uklad.Pokaz(_pokazWszystkie, ukryte > 0);
+        _pokazWszystkie.Text = ukryte == 1 ? "Pokaż 1 wcześniejsze" : $"Pokaż {ukryte} wcześniejszych";
+        _przejrzane.Enabled = nowe.Count > 0;
+
+        var zd = nowe.TakeLast(8).Reverse().ToList();
+        if (zd.Count == 0)
+            _listaZdarzen.Controls.Add(E.Opis(ukryte > 0
+                ? $"Brak nowych ostrzeżeń od oznaczenia {przejrzaneDo:dd.MM HH:mm}. Wcześniejsze ({ukryte}) zostały w dzienniku usługi."
+                : "Brak ostrzeżeń — wszystko w porządku."));
         foreach (var m in zd)
         {
             // Stale kolumny: znacznik, czas, tresc. Tresc konczy sie wielokropkiem — zdarzenie nie rozpycha karty.
@@ -143,7 +217,10 @@ public sealed class EkranStatus : Ekran
         }
 
         // ---- podsumowanie w naglowku karty
-        bool wszystkieOk = _poziomy.Count > 0 && _poziomy.All(p => p == Poziom.Ok);
+        // „Wymaga uwagi” ma wynikac z czegos, co uzytkownik moze zalatwic: z nieprzejrzanych ostrzezen
+        // albo z cyklu spoznionego WZGLEDEM HARMONOGRAMU. Samo „ostatni cykl starszy niz 5 minut” nie
+        // jest usterka, gdy harmonogram przewiduje cykl raz na godzine — a tak wlasnie bylo tu wczesniej.
+        bool wszystkieOk = _poziomy.Count > 0 && _poziomy.All(p => p == Poziom.Ok) && zd.Count == 0;
         _stan.Text = ostatnie.Count == 0 ? "Connector jeszcze nie synchronizował"
                    : wszystkieOk ? "Connector pracuje" : "Connector wymaga uwagi";
         _hero.KolorTla = ostatnie.Count == 0 ? Styl.Niebieski : wszystkieOk ? Styl.Mieta : Styl.Zolty;
@@ -308,6 +385,6 @@ public sealed class EkranStatus : Ekran
         return Styl.Wzglednie(t) + " · " + Styl.DataGodzina(t);
     }
 
-    public static string FormatNip(string n) => n.Length == 10 ? $"{n[..3]}-{n[3..6]}-{n[6..8]}-{n[8..]}" : n;
+    public static string FormatNip(string n) => n.Length == 10 && n.All(char.IsAsciiDigit) ? $"{n[..3]}-{n[3..6]}-{n[6..8]}-{n[8..]}" : n;
 }
 
