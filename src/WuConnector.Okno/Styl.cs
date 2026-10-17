@@ -198,6 +198,19 @@ public class Karta : Panel
             : y + (ostatnia is PasekZapisu ? 1 : Uklad.Srednia);
     }
 
+    /// <summary>
+    /// Plyty trzymaja szerokosc karty. Samo zakotwiczenie nie wystarcza: ekran buduje karty w konstruktorze,
+    /// zanim dostanie rozmiar — DopasujSzerokosc daje wtedy minimalne 400 i plyta kurczy sie do ~376.
+    /// Gdy karta pozniej rosnie do pelnej szerokosci, plyta potrafi zostac waska i OBCINA swoja zawartosc
+    /// (pola i teksty sa szersze niz ona). Zmierzone 17.10.2026 na zakladce „Polaczenie".
+    /// </summary>
+    protected override void OnSizeChanged(EventArgs e)
+    {
+        base.OnSizeChanged(e);
+        if (OdstepCzesci <= 0) return;
+        foreach (Control c in Controls) if (c is Blok) c.Width = Width - 2 * OdstepCzesci;
+    }
+
     public Karta()
     {
         DoubleBuffered = true;

@@ -241,15 +241,38 @@ public sealed class EkranPolaczenie : Ekran
         _pasekGorny.Width = Math.Max(400, Math.Min(w, Uklad.SzerokoscTresci));
     }
 
-    /// <summary>Jedna linia stanu w pasku: adres i to, czy klucz w ogole jest — bez wartosci klucza.</summary>
+    /// <summary>
+    /// Linia stanu w pasku. Zglasza to, co wymaga reakcji (brak adresu, brak klucza), a poza tym mowi
+    /// rzecz, ktorej nie widac z pol ponizej: kiedy connector ostatnio sie synchronizowal.
+    /// Nie pisze „klucz zapisany": skoro klucz jest w konfiguracji, to zdanie nic nie wnosi.
+    /// </summary>
     void OdswiezStanPaska()
     {
-        string adres = _k.Plik?.AdresSerwera is { Length: > 0 } a
-            ? a.Replace("https://", "").Replace("http://", "").TrimEnd('/')
-            : "adres nieustawiony";
-        bool maKlucz = !string.IsNullOrWhiteSpace(_k.Plik?.KluczApi);
-        _stanPolaczenia.Text = $"{adres}   ·   {(maKlucz ? "klucz zapisany" : "brak klucza")}";
-        _stanPolaczenia.ForeColor = maKlucz && _k.Plik?.AdresSerwera is { Length: > 0 } ? Styl.Granat : Styl.Koral;
+        string? adres = _k.Plik?.AdresSerwera;
+        if (string.IsNullOrWhiteSpace(adres))
+        {
+            _stanPolaczenia.Text = "Adres aplikacji wezurlop nie jest jeszcze ustawiony";
+            _stanPolaczenia.ForeColor = Styl.Koral;
+            return;
+        }
+        string domena = adres.Replace("https://", "").Replace("http://", "").TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(_k.Plik?.KluczApi))
+        {
+            _stanPolaczenia.Text = $"{domena}   ·   brak klucza instalacji";
+            _stanPolaczenia.ForeColor = Styl.Koral;
+            return;
+        }
+        _stanPolaczenia.Text = domena + (OstatniaSynchronizacja() is DateTime t
+            ? $"   ·   ostatnia synchronizacja {Styl.DataGodzina(t)}"
+            : "   ·   jeszcze nie synchronizowano");
+        _stanPolaczenia.ForeColor = Styl.Granat;
+    }
+
+    /// <summary>Czas ostatniego zakonczonego cyklu z dziennika uslugi — ten sam zapis czyta ekran Status.</summary>
+    DateTime? OstatniaSynchronizacja()
+    {
+        var ostatni = EkranStatus.CzytajDziennik(_k.KatalogDziennika, 300).LastOrDefault(l => l.Contains(": cykl "));
+        return ostatni is not null && DateTime.TryParse(ostatni[..19], out var t) ? t : null;
     }
 
     void PokazSekret(string t, Color kolor) { _stanSekretu.ForeColor = kolor; _stanSekretu.Text = t; }
