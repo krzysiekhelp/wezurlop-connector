@@ -14,7 +14,22 @@ public class KontaSqlNaSerwerzeTesty
     // Nazwa serwera to dana konkretnej instalacji — nie nalezy do repozytorium. Bierzemy ja ze zmiennej
     // srodowiskowej WU_TEST_SQL_SERWER (np. `set WU_TEST_SQL_SERWER=MOJ-HOST\INSTANCJA`); bez niej test jest pomijany.
     static string? Serwer => Environment.GetEnvironmentVariable("WU_TEST_SQL_SERWER");
-    static bool Pominac => Environment.GetEnvironmentVariable("WU_TEST_SQL") != "1" || string.IsNullOrWhiteSpace(Serwer);
+
+    /// <summary>
+    /// Czy pominac. `WU_TEST_SQL` rozne od 1 = swiadome wylaczenie testow serwerowych, pomijamy cicho.
+    /// Ale `WU_TEST_SQL=1` BEZ `WU_TEST_SQL_SERWER` to pomylka w konfiguracji, nie wylaczenie —
+    /// wtedy test PADA, zamiast przejsc na zielono nic nie sprawdzajac (patrz docs\stan.md 3.10).
+    /// </summary>
+    static bool Pominac
+    {
+        get
+        {
+            if (Environment.GetEnvironmentVariable("WU_TEST_SQL") != "1") return true;
+            Assert.False(string.IsNullOrWhiteSpace(Serwer),
+                "WU_TEST_SQL=1, ale WU_TEST_SQL_SERWER nie jest ustawione — test serwerowy nie ma gdzie sie polaczyc.");
+            return false;
+        }
+    }
     static KontaSql.Dostep Dostep => new(Serwer!);
 
     [Fact]

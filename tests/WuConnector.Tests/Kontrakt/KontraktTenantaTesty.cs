@@ -124,11 +124,16 @@ public class KontraktTenantaTesty
     [Fact]
     public async Task Prawdziwe_dane_zgodne_ze_schematem_tenanta()
     {
+        // WU_TEST_SQL rozne od 1 = swiadome wylaczenie, pomijamy cicho. Ale WU_TEST_SQL=1 z brakujaca
+        // nazwa serwera albo pusta lista baz to pomylka w konfiguracji — wtedy PADAMY, zamiast przejsc
+        // na zielono nic nie sprawdzajac (patrz docs\stan.md 3.10).
         if (Environment.GetEnvironmentVariable("WU_TEST_SQL") != "1") return;
         string? serwer = Environment.GetEnvironmentVariable("WU_TEST_SQL_SERWER");
         string[] prefiksy = (Environment.GetEnvironmentVariable("WU_TEST_SQL_BAZY") ?? "")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (string.IsNullOrWhiteSpace(serwer) || prefiksy.Length == 0) return;
+        Assert.False(string.IsNullOrWhiteSpace(serwer),
+            "WU_TEST_SQL=1, ale WU_TEST_SQL_SERWER nie jest ustawione.");
+        Assert.NotEmpty(prefiksy);   // WU_TEST_SQL_BAZY: prefiksy baz po przecinku
 
         foreach (string prefiks in prefiksy)
         {

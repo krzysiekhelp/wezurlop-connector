@@ -217,6 +217,55 @@ nagłówek wyciął pośrednik po drodze, odpowiedź byłaby nieodróżnialna od
 Potwierdzone 17.10.2026 po wdrożeniu 0.1.4: bez nagłówka `firma=null`, z nagłówkiem `firma=ok`
 dla obu firm. Pomysł testu: sesja tenanta (Agent C).
 
+### 3.10 Testy bramkowane zmiennymi — zmienne i zasada „pominięcie nie może być ciche"
+
+**Czego się tu nauczyliśmy (17.10.2026).** Osiem testów `MagazynBibliotekTesty` miało ścieżki do
+bibliotek R2 wpisanych na sztywno i bramkę `if (!Sa) return;`. Po podmianie nazw katalogów przy
+czyszczeniu danych klienta ścieżki wskazywały katalogi, których nie ma, i **wszystkie osiem cicho
+przechodziło na zielono.** Zestaw raportował 176 sukcesów, a ścieżka weryfikacji podpisu manifestu
+— akurat ta, w której łataliśmy lukę `NU1903` — nie była sprawdzana wcale.
+
+**Liczba testów tego nie pokazuje.** Z ustawionymi zmiennymi i bez nich jest identyczna: **176**.
+Różni je **tylko czas**: ~2 s bez zmiennych, ~16–17 s ze zmiennymi. Dlatego nie wolno wnioskować
+z zielonego wyniku, że sprawdzono ścieżki wymagające środowiska.
+
+**Zasada obowiązująca we wszystkich bramkowanych testach:**
+- zmienna **nieustawiona** = świadome wyłączenie → test pomijany cicho (tak działa CI);
+- zmienna **ustawiona, ale błędna** (nieistniejący plik, brak serwera, pusta lista baz) = pomyłka
+  w konfiguracji → test **pada** z czytelnym komunikatem, nie przechodzi.
+
+**Zmienne testowe**
+
+| Zmienna | Co włącza | Przykład (bez danych klienta) |
+|---|---|---|
+| `WU_TEST_DLL_NOWA` | `MagazynBibliotekTesty` — magazyn bibliotek, weryfikacja podpisu manifestu i podpisu producenta. Biblioteka w wersji pliku 10.1.0.33 | `C:\R2\NowyR2Platnik.10_firma\BIN\R2PApi10.dll` |
+| `WU_TEST_DLL_STARA` | to samo; biblioteka w wersji pliku 10.1.0.32 (niezgodna z bazą — wymusza pobranie) | `C:\R2\R2Platnik.10x_firma_old\BIN\R2PApi10.dll` |
+| `WU_TEST_SQL` | przełącznik testów na prawdziwym serwerze SQL; wartość `1` | `1` |
+| `WU_TEST_SQL_SERWER` | serwer i instancja dla `KontaSqlNaSerwerzeTesty` i kontraktu na prawdziwych danych | `MOJ-HOST\INSTANCJA` |
+| `WU_TEST_SQL_BAZY` | prefiksy baz R2 po przecinku dla testu kontraktu | `r2p_platnik10_pierwsza,r2p_platnik10_druga` |
+| `WU_R2_HASLO` | hasło konta R2 dla `tools\uruchom-worker.ps1` (nie dla testów) | — |
+
+**`build\publikuj.ps1` odmawia zbudowania paczki**, gdy `WU_TEST_DLL_*` nie są ustawione albo wskazują
+nieistniejące pliki — żeby nie wydać paczki, której ścieżka podpisu nie była sprawdzona. Kontrola idzie
+**przed** podbiciem licznika, więc odmowa nie zużywa numeru wersji. Świadome obejście:
+`-BezTestowMagazynu` — zostawia ostrzeżenie w wyniku i wpis w `INFO.txt`, który **jedzie w paczce**
+aż do katalogu instalacji (sprawdzone: `INFO.txt` jest w tabeli `File` pakietu MSI).
+
+`WU_TEST_SQL*` **nie blokuje** budowania — testy odczytu bazy nie należą do ścieżki bezpieczeństwa;
+skrypt tylko informuje, że zostały pominięte.
+
+### 3.11 Pułapki budowania instalatora
+
+**Numer wersji MSI nie przyjmuje etykiet.** `0.1.6-probna` → `ICE24: ProductVersion … is an invalid
+version string`. Dozwolone jest wyłącznie `x.y.z` (major < 256, minor < 256, build < 65536).
+
+**Gorsze: nieudany build zostawia `installer\obj` w stanie, w którym kolejny build „przechodzi"
+bez błędu WiX, ale nie produkuje pliku MSI.** Jedynym objawem jest `MSB3030` o braku pliku do
+skopiowania — komunikat, który wskazuje na kopiowanie, a nie na kompilację. `publikuj.ps1` usuwa
+teraz `installer\obj` przed budowaniem MSI, a po buildzie **sprawdza, że plik istnieje i że jego
+`ProductVersion` zgadza się z numerem, o który poprosiliśmy** — nieudany odczyt wersji jest błędem,
+nie ostrzeżeniem.
+
 ## 4. Okno konfiguracji — stan po przebudowie
 
 ### Zakładka „R2 Płatnik” (dawniej „Instalacje i firmy”)
